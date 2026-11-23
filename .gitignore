@@ -1,0 +1,43 @@
+
+# Bundler
+/vendor/bundle/
+/.bundle/
+
+# Ruby
+*.gem
+*.rbc
+/.byebug_history
+
+# Logs
+/log/*
+!/log/.keep
+
+# Temporary files
+/tmp/*
+!/tmp/.keep
+*.tmp
+*.swp
+
+# Test coverage
+/coverage/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# PID files
+*.pid
+*.pid.lock
+
+# Redis persistence
+dump.rdb
+appendonly.aof
