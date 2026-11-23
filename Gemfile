@@ -4,7 +4,7 @@ source 'https://rubygems.org'
 
 ruby '4.0.0'
 
-gem 'puma', '~> 7.0'
+gem 'puma', '~> 8.0'
 gem 'rackup', '~> 2.2'
 gem 'sinatra', '~> 4.1'
 
