@@ -4,11 +4,16 @@ require 'rack'
 require_relative 'middleware/client_ip'
 
 module RateLimiter
-  # Rack middleware that decides which requests are rate limited and who sent them.
+  # Rack middleware that rate limits requests to chosen paths. It identifies
+  # the client, asks the limiter for a decision, reports that decision in
+  # RateLimit-* headers, and answers 429 itself when the request is rejected.
   class Middleware
     CLIENT_KEY = 'rate_limiter.client_key'
+    RESULT_KEY = 'rate_limiter.result'
 
     def initialize(app, limiter:, paths:, client_ip: ClientIp.new)
+      ensure_immediate!(limiter)
+
       @app = app
       @limiter = limiter
       @paths = paths.map { |path| normalize(path) }.freeze
@@ -22,24 +27,55 @@ module RateLimiter
       env[CLIENT_KEY] = key
 
       result = @limiter.acquire(key)
+      env[RESULT_KEY] = result
       return too_many_requests(result) unless result.allowed?
 
-      @app.call(env)
+      status, headers, body = @app.call(env)
+      [status, headers.merge(rate_limit_headers(result)), body]
     end
 
     private
+
+    # A queue algorithm answers "you're in line", not "allowed" or "rejected",
+    # so it cannot decide a request that is waiting for its response.
+    def ensure_immediate!(limiter)
+      return if limiter.respond_to?(:acquire) && limiter.respond_to?(:limit)
+
+      raise ArgumentError,
+            "limiter must respond to #acquire and #limit (got #{limiter.class}): " \
+            'queue algorithms delay work instead of answering allow-or-reject immediately, ' \
+            'so build the limiter with RateLimiter.limiter'
+    end
 
     def limited?(env)
       @paths.include?(normalize(env['PATH_INFO'].to_s))
     end
 
+    # The one 429 every algorithm produces.
     def too_many_requests(result)
       headers = {
         'content-type' => 'text/plain',
-        'retry-after' => result.retry_after.ceil.to_s
+        'retry-after' => whole_seconds(result.retry_after)
       }
 
-      [429, headers, ["Too Many Requests\n"]]
+      [429, headers.merge!(rate_limit_headers(result)), ["Too Many Requests\n"]]
+    end
+
+    # A new Hash for every response, so no two responses ever share one.
+    # ratelimit-reset is left out when the limiter doesn't report it.
+    def rate_limit_headers(result)
+      headers = {
+        'ratelimit-limit' => @limiter.limit.to_s,
+        'ratelimit-remaining' => result.remaining.to_s
+      }
+      headers['ratelimit-reset'] = whole_seconds(result.reset_after) unless result.reset_after.nil?
+      headers
+    end
+
+    # Headers carry whole seconds. Round up, so a client that waits the
+    # advertised time is never early.
+    def whole_seconds(seconds)
+      seconds.ceil.to_s
     end
 
     def normalize(path)
