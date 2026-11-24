@@ -18,8 +18,7 @@ module RateLimiter
       attr_reader :capacity, :refill_rate
 
       def initialize(capacity:, refill_rate:, clock: Clock::Monotonic)
-        raise ArgumentError, 'capacity must be a positive number' unless positive_number?(capacity)
-        raise ArgumentError, 'refill_rate must be a positive number' unless positive_number?(refill_rate)
+        validate_configuration!(capacity, refill_rate)
 
         @capacity = capacity
         @refill_rate = refill_rate
@@ -50,6 +49,11 @@ module RateLimiter
       end
 
       private
+
+      def validate_configuration!(capacity, refill_rate)
+        raise ArgumentError, 'capacity must be a positive number' unless positive_number?(capacity)
+        raise ArgumentError, 'refill_rate must be a positive number' unless positive_number?(refill_rate)
+      end
 
       # Lazy refill: instead of a timer adding tokens, we add everything that
       # accrued since the last visit, capped at capacity.
