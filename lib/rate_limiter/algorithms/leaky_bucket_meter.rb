@@ -3,6 +3,7 @@
 require_relative '../clock'
 require_relative '../result'
 require_relative '../validators/configuration_validator'
+require_relative '../validators/cost_validator'
 
 module RateLimiter
   module Algorithms
@@ -30,7 +31,12 @@ module RateLimiter
       end
 
       def acquire(key, cost: 1)
-        validate_cost!(cost)
+        Validators::CostValidator.validate!(
+          cost: cost,
+          maximum: @capacity,
+          maximum_name: 'capacity',
+          type: :number
+        )
 
         @mutex.synchronize do
           state = leak(key)
@@ -69,11 +75,6 @@ module RateLimiter
       # Whole requests (of cost 1) that still fit before the bucket overflows.
       def headroom(state)
         (@capacity - state.level + EPSILON).floor
-      end
-
-      def validate_cost!(cost)
-        raise ArgumentError, 'cost must be a positive number' unless Utils::NumericUtils.positive_number?(cost)
-        raise ArgumentError, "cost #{cost} exceeds capacity #{@capacity}" if cost > @capacity
       end
     end
   end

@@ -22,8 +22,13 @@ end
 
 limiters = {
   'Sliding window log' => -> { RateLimiter::Algorithms::SlidingWindowLog.new(limit: LIMIT, window: 60) },
-  'Fixed window' => -> { RateLimiter::Algorithms::FixedWindowCounter.new(limit: LIMIT, window: 60) }
+  'Sliding window counter' => -> { RateLimiter::Algorithms::SlidingWindowCounter.new(limit: LIMIT, window: 60) },
+  'Fixed window counter' => -> { RateLimiter::Algorithms::FixedWindowCounter.new(limit: LIMIT, window: 60) }
 }
+
+# Keep every limiter alive until the end, so freeing one can't distort the
+# next measurement.
+kept = []
 
 puts format(
   '%<algorithm>-20s %<total>12s %<per_client>16s',
@@ -33,14 +38,15 @@ puts format(
 )
 
 limiters.each do |name, build|
-  bytes, _limiter = retained_bytes do
-    limiter = build.call
+  bytes, limiter = retained_bytes do
+    built = build.call
     CLIENTS.times do |client|
       key = "ip:10.0.#{client / 256}.#{client % 256}"
-      LIMIT.times { limiter.acquire(key) }
+      LIMIT.times { built.acquire(key) }
     end
-    limiter
+    built
   end
+  kept << limiter
 
   puts format(
     '%<name>-20s %<megabytes>9.1f MB %<bytes_per_client>13d B',

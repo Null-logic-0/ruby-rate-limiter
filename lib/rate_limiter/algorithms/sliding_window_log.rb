@@ -3,6 +3,7 @@
 require_relative '../clock'
 require_relative '../result'
 require_relative '../validators/configuration_validator'
+require_relative '../validators/cost_validator'
 
 module RateLimiter
   module Algorithms
@@ -27,7 +28,11 @@ module RateLimiter
       end
 
       def acquire(key, cost: 1)
-        validate_cost!(cost)
+        Validators::CostValidator.validate!(
+          cost: cost,
+          maximum: @limit,
+          type: :integer
+        )
 
         @mutex.synchronize do
           log = (@logs[key] ||= [])
@@ -96,11 +101,6 @@ module RateLimiter
 
       def reset_after(log, now)
         log.empty? ? 0.0 : log.last + @window - now
-      end
-
-      def validate_cost!(cost)
-        raise ArgumentError, 'cost must be a positive integer' unless Utils::NumericUtils.positive_integer?(cost)
-        raise ArgumentError, "cost #{cost} exceeds limit #{@limit}" if cost > @limit
       end
     end
   end
