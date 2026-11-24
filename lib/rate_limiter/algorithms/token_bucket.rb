@@ -2,6 +2,7 @@
 
 require_relative '../clock'
 require_relative '../result'
+require_relative '../validators/configuration_validator'
 
 module RateLimiter
   module Algorithms
@@ -18,7 +19,10 @@ module RateLimiter
       attr_reader :capacity, :refill_rate
 
       def initialize(capacity:, refill_rate:, clock: Clock::Monotonic)
-        validate_configuration!(capacity, refill_rate)
+        Validators::ConfigurationValidator.validate!(
+          capacity: [capacity, :integer],
+          refill_rate: [refill_rate, :number]
+        )
 
         @capacity = capacity
         @refill_rate = refill_rate
@@ -50,11 +54,6 @@ module RateLimiter
 
       private
 
-      def validate_configuration!(capacity, refill_rate)
-        raise ArgumentError, 'capacity must be a positive number' unless positive_number?(capacity)
-        raise ArgumentError, 'refill_rate must be a positive number' unless positive_number?(refill_rate)
-      end
-
       # Lazy refill: instead of a timer adding tokens, we add everything that
       # accrued since the last visit, capped at capacity.
       def refill(key)
@@ -75,12 +74,8 @@ module RateLimiter
       end
 
       def validate_cost!(cost)
-        raise ArgumentError, 'cost must be a positive number' unless positive_number?(cost)
+        raise ArgumentError, 'cost must be a positive number' unless Utils::NumericUtils.positive_number?(cost)
         raise ArgumentError, "cost #{cost} exceeds capacity #{@capacity}" if cost > @capacity
-      end
-
-      def positive_number?(value)
-        value.is_a?(Numeric) && value.real? && value.finite? && value.positive?
       end
     end
   end

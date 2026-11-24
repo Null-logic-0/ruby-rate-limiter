@@ -2,6 +2,7 @@
 
 require_relative '../clock'
 require_relative '../result'
+require_relative '../validators/configuration_validator'
 
 module RateLimiter
   module Algorithms
@@ -16,7 +17,10 @@ module RateLimiter
       attr_reader :capacity, :leak_rate
 
       def initialize(capacity:, leak_rate:, clock: Clock::Monotonic)
-        validate_configuration(capacity, leak_rate)
+        Validators::ConfigurationValidator.validate!(
+          capacity: [capacity, :integer],
+          leak_rate: [leak_rate, :number]
+        )
 
         @capacity = capacity
         @leak_rate = leak_rate
@@ -48,11 +52,6 @@ module RateLimiter
 
       private
 
-      def validate_configuration(capacity, leak_rate)
-        raise ArgumentError, 'capacity must be a positive number' unless positive_number?(capacity)
-        raise ArgumentError, 'leak_rate must be a positive number' unless positive_number?(leak_rate)
-      end
-
       # Lazy leak: remove all the water that drained since the last visit,
       def leak(key)
         now = @clock.now
@@ -73,12 +72,8 @@ module RateLimiter
       end
 
       def validate_cost!(cost)
-        raise ArgumentError, 'cost must be a positive number' unless positive_number?(cost)
+        raise ArgumentError, 'cost must be a positive number' unless Utils::NumericUtils.positive_number?(cost)
         raise ArgumentError, "cost #{cost} exceeds capacity #{@capacity}" if cost > @capacity
-      end
-
-      def positive_number?(value)
-        value.is_a?(Numeric) && value.real? && value.finite? && value.positive?
       end
     end
   end

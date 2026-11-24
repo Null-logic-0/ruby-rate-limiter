@@ -3,8 +3,11 @@
 require_relative 'rate_limiter/version'
 require_relative 'rate_limiter/clock'
 require_relative 'rate_limiter/result'
+require_relative 'rate_limiter/admission'
+require_relative 'rate_limiter/validators/configuration_validator'
 require_relative 'rate_limiter/algorithms/token_bucket'
 require_relative 'rate_limiter/algorithms/leaky_bucket_meter'
+require_relative 'rate_limiter/algorithms/leaky_bucket_queue'
 
 module RateLimiter
   class Error < StandardError; end
