@@ -10,4 +10,9 @@ task :coverage do
   Rake::Task[:spec].invoke
 end
 
+desc 'Compare every algorithm: speed, memory, threads (BENCH_OPS / BENCH_ROUNDS to resize)'
+task :benchmark do
+  ruby 'benchmark/compare.rb'
+end
+
 task default: :spec

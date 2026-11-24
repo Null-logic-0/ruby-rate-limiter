@@ -2,6 +2,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     base64 (0.3.0)
+    benchmark (0.5.0)
     connection_pool (3.0.3)
     diff-lcs (1.6.2)
     logger (1.7.0)
@@ -56,6 +57,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  benchmark (~> 0.4)
   logger (~> 1.7)
   puma (~> 8.0)
   rack-test (~> 2.2)
@@ -68,6 +70,7 @@ DEPENDENCIES
 
 CHECKSUMS
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
+  benchmark (0.5.0) sha256=465df122341aedcb81a2a24b4d3bd19b6c67c1530713fd533f3ff034e419236c
   bundler (4.0.23) sha256=407ba8a1d928f412847f819aa5f8b6aef7c59fb51feb517112af8a165487287b
   connection_pool (3.0.3) sha256=e0f8ee3ee0039396753e06e8a2dde0ef028e40f7df29e97f57da7577c489cb5e
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962

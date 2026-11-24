@@ -11,11 +11,11 @@ gem 'sinatra', '~> 4.1'
 
 gem 'redis', '~> 6.1'
 
-# Structured logs (RateLimiter::JsonLogFormatter). Ruby 4.0 ships logger as a
-# bundled gem, not a default one, so Bundler only loads it when listed here.
+
 gem 'logger', '~> 1.7'
 
 group :development, :test do
+  gem 'benchmark', '~> 0.4' 
   gem 'rack-test', '~> 2.2'
   gem 'rake', '~> 13.2'
   gem 'rspec', '~> 3.13'
