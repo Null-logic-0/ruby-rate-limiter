@@ -8,7 +8,8 @@ trusted_proxies = ENV.fetch('TRUSTED_PROXIES', '').split(',').map(&:strip).rejec
 
 use RateLimiter::Middleware,
     # limiter: RateLimiter::Algorithms::TokenBucket.new(capacity: 3, refill_rate: 0.1),
-    limiter: RateLimiter::Algorithms::LeakyBucketMeter.new(capacity: 3, leak_rate: 0.1),
+    # limiter: RateLimiter::Algorithms::LeakyBucketMeter.new(capacity: 3, leak_rate: 0.1),
+    limiter: RateLimiter::Algorithms::FixedWindowCounter.new(limit: 60, window: 60),
     paths: ['/limited'],
     client_ip: RateLimiter::Middleware::ClientIp.new(trusted_proxies: trusted_proxies)
 

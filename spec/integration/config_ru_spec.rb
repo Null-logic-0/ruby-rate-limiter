@@ -9,6 +9,14 @@ RSpec.describe 'config.ru' do
   let(:app) { Rack::Builder.parse_file(File.expand_path('../../config.ru', __dir__)) }
   let(:client_key) { last_request.env[RateLimiter::Middleware::CLIENT_KEY] }
 
+  # config.ru uses a FixedWindowCounter(limit: 60, window: 60) on the wall
+  # clock. Freeze time 15 seconds into a window so a burst can never straddle
+  # a minute boundary, and Retry-After is exact.
+  let(:limit) { 60 }
+  let(:window_start) { 1_800_000_000.0 }
+
+  before { allow(RateLimiter::Clock::Wall).to receive(:now).and_return(window_start + 15) }
+
   def burst(path, count, headers = {})
     Array.new(count) do
       get path, {}, headers
@@ -43,13 +51,13 @@ RSpec.describe 'config.ru' do
     expect(client_key).to eq('ip:127.0.0.1')
   end
 
-  it 'admits a burst of 3 and rejects the 4th with 429' do
-    expect(burst('/limited', 4)).to eq([200] * 3 + [429])
-    expect(last_response.headers['retry-after']).to eq('10')
+  it 'admits a full window and rejects the next request with 429' do
+    expect(burst('/limited', limit + 1)).to eq([200] * limit + [429])
+    expect(last_response.headers['retry-after']).to eq('45')
   end
 
   it 'does not give a forged X-Forwarded-For a fresh bucket' do
-    burst('/limited', 3)
+    burst('/limited', limit)
 
     get '/limited', {}, { 'HTTP_X_FORWARDED_FOR' => '198.51.100.1' }
 

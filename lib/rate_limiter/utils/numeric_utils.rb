@@ -12,6 +12,11 @@ module RateLimiter
           value.finite? &&
           value.positive?
       end
+
+      def positive_integer?(value)
+        value.is_a?(Integer) &&
+          value.positive?
+      end
     end
   end
 end
