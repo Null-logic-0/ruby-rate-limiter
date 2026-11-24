@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-# Replays the same random traffic against the sliding window counter and the
-# exact sliding window log, and compares what each admitted.
+# Same random traffic against the sliding window counter and the
+# exact sliding window log: how close is the counter?
 
 # bundle exec ruby examples/counter_accuracy.rb
 
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-# A clock the script moves by hand.
+# A clock moved by hand.
 class ScriptClock
   attr_reader :now
 
@@ -20,9 +20,8 @@ class ScriptClock
   end
 end
 
-# Two hours of random traffic averaging `per_minute` requests per minute.
-# Returns how many requests were admitted and the most admitted within any
-# 60-second span.
+# Two hours of random traffic. Returns total admitted and the most
+# admitted in any 60 seconds.
 def simulate(limiter_class, limit:, per_minute:, minutes: 120, seed: 1)
   clock = ScriptClock.new
   limiter = limiter_class.new(limit: limit, window: 60, clock: clock)
@@ -56,8 +55,8 @@ puts format(
 puts '-' * 86
 
 [[100, 50], [100, 100], [100, 200], [10, 10]].each do |limit, per_minute|
-  counter = simulate(RateLimiter::Algorithms::SlidingWindowCounter, limit: limit, per_minute: per_minute)
-  log = simulate(RateLimiter::Algorithms::SlidingWindowLog, limit: limit, per_minute: per_minute)
+  counter = simulate(RateGuard::Algorithms::SlidingWindowCounter, limit: limit, per_minute: per_minute)
+  log = simulate(RateGuard::Algorithms::SlidingWindowLog, limit: limit, per_minute: per_minute)
 
   puts format(
     '%<limit>-6d %<per_minute>3d/min | %<counter_admitted>8d / %<counter_peak>-11d | %<log_admitted>8d / %<log_peak>-11d | %<difference>+.1f%%',

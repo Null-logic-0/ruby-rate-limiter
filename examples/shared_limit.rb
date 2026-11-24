@@ -1,26 +1,25 @@
 # frozen_string_literal: true
 
-# Simulates two application servers, each with its own limiter, enforcing
-# "60 requests per minute" for the same client: first with in-memory state,
-# then with the state shared through Redis.
+# Two servers, one client, 60 requests/minute: first in memory
+# (each server counts alone), then shared through Redis.
 #
-#   docker run --rm -p 6379:6379 redis:8      (in another terminal)
+#   docker run --rm -p 6379:6379 redis:8   (another terminal)
 #   bundle exec ruby examples/shared_limit.rb
 
 require 'redis'
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
 REDIS_URL = ENV.fetch('REDIS_URL', 'redis://127.0.0.1:6379')
 CLIENT = 'ip:203.0.113.7'
 
-# One "server": its own limiter, and its own Redis connection if shared.
+# One server: its own limiter and Redis connection.
 def build_server(redis: nil)
-  config = RateLimiter::Configuration.new
+  config = RateGuard::Configuration.new
   config.algorithm = :sliding_window_counter
   config.limit = 60
   config.window = 60
   config.redis = redis
-  RateLimiter.limiter(config)
+  RateGuard.limiter(config)
 end
 
 def demo(title, server_a, server_b)

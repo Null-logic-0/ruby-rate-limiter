@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
-# Single-thread speed: decisions per second, wall time and CPU time per
-# decision. The clock moves 2 ms per request, so buckets refill and windows
-# roll over as they would under steady traffic.
+# One thread: decisions per second and time per decision.
+# The clock moves 2 ms per request, like steady traffic.
 #
 #   bundle exec ruby benchmark/single_thread.rb
 

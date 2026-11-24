@@ -3,9 +3,8 @@
 require 'redis'
 require 'securerandom'
 
-# Examples tagged :redis talk to a real Redis at REDIS_URL. When none is
-# reachable they are skipped, so the rest of the suite runs without one; set
-# REQUIRE_REDIS=1 (e.g. in CI) to make that a failure instead.
+# :redis examples use REDIS_URL and are skipped if Redis is down.
+# REQUIRE_REDIS=1 makes that a failure (for CI).
 module RedisHelpers
   def redis_url
     ENV.fetch('REDIS_URL', 'redis://127.0.0.1:6379/15')
@@ -15,10 +14,9 @@ module RedisHelpers
     @redis ||= Redis.new(url: redis_url, timeout: 0.5)
   end
 
-  # Every example writes under its own prefix and deletes only those keys,
-  # so the tests never touch anyone else's data in that Redis.
+  # Each example uses its own key prefix and deletes only those keys.
   def redis_namespace
-    @redis_namespace ||= "rate_limiter_test_#{SecureRandom.hex(4)}"
+    @redis_namespace ||= "rate_guard_test_#{SecureRandom.hex(4)}"
   end
 end
 

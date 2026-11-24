@@ -1,19 +1,18 @@
 # frozen_string_literal: true
 
-# Configures the library by name, builds limiters from the configuration,
-# and shows the errors you get for invalid settings.
+# Configure by name, build limiters, and see errors for bad settings.
 
 #   bundle exec ruby examples/configuration.rb
 
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-RateLimiter.configure do |config|
+RateGuard.configure do |config|
   config.algorithm = :sliding_window_log
   config.limit = 3
   config.window = 60
 end
 
-limiter = RateLimiter.limiter
+limiter = RateGuard.limiter
 puts "Built: #{limiter.class}"
 
 4.times do
@@ -29,25 +28,25 @@ end
 
 puts 'Invalid settings:'
 begin
-  RateLimiter.configure do |config|
+  RateGuard.configure do |config|
     config.algorithm = :leaky_bucket
     config.limit = 0
   end
-rescue RateLimiter::ConfigurationError => e
+rescue RateGuard::ConfigurationError => e
   puts "  #{e.message}"
 end
-puts "  still using: #{RateLimiter.configuration.algorithm}"
+puts "  still using: #{RateGuard.configuration.algorithm}"
 
 puts 'Wrong interface:'
-RateLimiter.configure do |config|
+RateGuard.configure do |config|
   config.algorithm = :leaky_bucket_queue
   config.limit = 5
   config.window = 10
 end
 
 begin
-  RateLimiter.limiter
-rescue RateLimiter::ConfigurationError => e
+  RateGuard.limiter
+rescue RateGuard::ConfigurationError => e
   puts "  #{e.message}"
 end
-puts "  RateLimiter.queue built: #{RateLimiter.queue.class}"
+puts "  RateGuard.queue built: #{RateGuard.queue.class}"

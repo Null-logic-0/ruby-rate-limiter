@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/identifiers'
+require 'rate_guard/identifiers'
 
-RSpec.describe RateLimiter::Identifiers::User do
+RSpec.describe RateGuard::Identifiers::User do
   it 'keys the request by the user id your authentication stored in the env' do
-    expect(described_class.new.call('rate_limiter.user_id' => 42)).to eq('user:42')
+    expect(described_class.new.call('rate_guard.user_id' => 42)).to eq('user:42')
   end
 
   it 'reads another env key when told to' do
@@ -19,7 +19,7 @@ RSpec.describe RateLimiter::Identifiers::User do
 
   [nil, ''].each do |id|
     it "returns nil when nobody is logged in (#{id.inspect})" do
-      expect(described_class.new.call('rate_limiter.user_id' => id)).to be_nil
+      expect(described_class.new.call('rate_guard.user_id' => id)).to be_nil
     end
   end
 

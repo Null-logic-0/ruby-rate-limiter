@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::FixedWindowCounter do
+RSpec.describe RateGuard::Algorithms::FixedWindowCounter do
   subject(:limiter) { described_class.new(limit: 3, window: 60, clock: clock) }
 
   # 64_033 seconds after midnight is 17:47:13; its window is 17:47:00-17:47:59.

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::LeakyBucketMeter do
+RSpec.describe RateGuard::Algorithms::LeakyBucketMeter do
   subject(:bucket) { described_class.new(capacity: 10, leak_rate: 1, clock: clock) }
 
   let(:clock) { FakeClock.new }
@@ -157,7 +157,7 @@ RSpec.describe RateLimiter::Algorithms::LeakyBucketMeter do
 
   describe 'equivalence with TokenBucket' do
     it 'makes the same decisions as a token bucket with the same settings' do
-      token_bucket = RateLimiter::Algorithms::TokenBucket.new(capacity: 10, refill_rate: 2, clock: clock)
+      token_bucket = RateGuard::Algorithms::TokenBucket.new(capacity: 10, refill_rate: 2, clock: clock)
       meter = described_class.new(capacity: 10, leak_rate: 2, clock: clock)
       random = Random.new(42)
       decisions = []

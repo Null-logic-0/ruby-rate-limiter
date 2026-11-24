@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-# Shows the fixed window's boundary burst: a client sends 60 requests just
-# before a minute ends and 60 more just after, against a limit of 60/minute.
+# Fixed window burst: 60 requests just before a minute ends and 60
+# just after, with a limit of 60/minute.
 
 # bundle exec ruby examples/boundary_burst.rb
 
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-# A clock the script moves by hand, so the timeline is exact.
+# A clock moved by hand.
 class ScriptClock
   attr_accessor :now
 end
 
 clock = ScriptClock.new
-fixed = RateLimiter::Algorithms::FixedWindowCounter.new(limit: 60, window: 60, clock: clock)
-bucket = RateLimiter::Algorithms::TokenBucket.new(capacity: 60, refill_rate: 1, clock: clock)
+fixed = RateGuard::Algorithms::FixedWindowCounter.new(limit: 60, window: 60, clock: clock)
+bucket = RateGuard::Algorithms::TokenBucket.new(capacity: 60, refill_rate: 1, clock: clock)
 key = 'ip:203.0.113.7'
 bursts = [Time.utc(2026, 11, 24, 17, 47, 59.5), Time.utc(2026, 11, 24, 17, 48, 0.1)]
 totals = { fixed: 0, bucket: 0 }

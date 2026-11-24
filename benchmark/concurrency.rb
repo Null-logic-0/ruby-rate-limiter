@@ -1,13 +1,9 @@
 # frozen_string_literal: true
 
-# Concurrent behaviour, two questions:
-#
-# 1. Throughput with 1, 4 and 16 threads sharing one limiter (many clients,
-#    frozen clock). On CRuby the GVL runs one thread at a time, so CPU-bound
-#    in-memory limiters can't speed up; threads only help while one waits on
-#    I/O, as with Redis.
-# 2. Correctness: 16 threads hammer ONE client at the same moment. Admissions
-#    must equal the limit exactly, never more.
+# Threads sharing one limiter:
+# 1. Speed with 1, 4 and 16 threads. The GVL limits CPU-bound code;
+#    threads help only while waiting on I/O (Redis).
+# 2. Correctness: 16 threads hit one client at once. Never more than the limit.
 #
 #   bundle exec ruby benchmark/concurrency.rb
 
@@ -20,7 +16,7 @@ module Bench
 
     module_function
 
-    # { name => { throughput: { 1 => ops/s, 4 => ..., 16 => ... }, admitted:, exact: } }
+    # { name => { throughput: { 1 => ops/s, ... }, admitted:, exact: } }
     def run
       results = candidates.to_h do |name, kind, builder|
         keys = Bench.keys(Bench.ops_for(name))
@@ -36,8 +32,7 @@ module Bench
       results
     end
 
-    # Every algorithm, plus the Redis counter behind a connection pool: with
-    # one shared connection, Redis calls from different threads queue up.
+    # Every algorithm, plus Redis with a connection pool.
     def candidates
       list = Bench.algorithms
       return list unless Bench.pooled_redis
@@ -46,7 +41,7 @@ module Bench
                ->(clock) { Bench.build(:sliding_window_counter, clock, Bench.pooled_redis) }]]
     end
 
-    # Decisions per second with `threads` threads splitting the same key list.
+    # Decisions per second with `threads` threads.
     def measure(limiter, kind, keys, threads)
       Bench.clean_redis
       slices = keys.each_slice((keys.size / threads.to_f).ceil).to_a
@@ -55,8 +50,7 @@ module Bench
       keys.size / elapsed
     end
 
-    # 16 threads x 50 attempts = 800 attempts on one client with a limit of
-    # 100. For the queue, "admitted" means accepted into the queue.
+    # 16 threads x 50 tries on one client, limit 100.
     def hot_key_admissions(limiter, kind)
       Bench.clean_redis
       admitted = Queue.new
@@ -70,7 +64,7 @@ module Bench
       admitted.size
     end
 
-    # Starts all threads at the same moment and returns the wall time.
+    # Starts all threads together; returns elapsed time.
     def run_together(count, &work)
       start = Queue.new
       threads = Array.new(count) do |i|

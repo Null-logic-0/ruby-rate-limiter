@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::LeakyBucketQueue do
+RSpec.describe RateGuard::Algorithms::LeakyBucketQueue do
   subject(:queue) { described_class.new(capacity: 3, leak_rate: 2, clock: clock) }
 
   let(:clock) { FakeClock.new }

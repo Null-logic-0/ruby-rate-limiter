@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
-# Runs every benchmark and prints one comparison table.
+# Runs all benchmarks and prints one table.
 #
-#   bundle exec ruby benchmark/compare.rb          # or: bundle exec rake benchmark
+#   bundle exec rake benchmark
 #   BENCH_OPS=10000 BENCH_ROUNDS=3 bundle exec ruby benchmark/compare.rb   # quicker
 #   RUBY_YJIT_ENABLE=1 bundle exec ruby benchmark/compare.rb               # with YJIT
 #
-# The numbers depend on the machine, the Ruby build, YJIT and (for Redis) the
-# network: compare rows with each other, not with another machine's run.
+# Numbers depend on the machine: compare rows, not machines.
 
 require_relative 'single_thread'
 require_relative 'memory'

@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
-# Replays the same requests against a token bucket and a leaky bucket (meter)
-# and prints their state side by side.
+# Same requests against a token bucket and a leaky bucket, side by side.
 
 # bundle exec ruby examples/compare_buckets.rb
 
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-# A clock the script moves by hand, so the timeline is exact.
+# A clock moved by hand.
 class ScriptClock
   attr_accessor :now
 
@@ -17,8 +16,8 @@ class ScriptClock
 end
 
 clock = ScriptClock.new
-token_bucket = RateLimiter::Algorithms::TokenBucket.new(capacity: 10, refill_rate: 1, clock: clock)
-leaky_bucket = RateLimiter::Algorithms::LeakyBucketMeter.new(capacity: 10, leak_rate: 1, clock: clock)
+token_bucket = RateGuard::Algorithms::TokenBucket.new(capacity: 10, refill_rate: 1, clock: clock)
+leaky_bucket = RateGuard::Algorithms::LeakyBucketMeter.new(capacity: 10, leak_rate: 1, clock: clock)
 key = 'ip:203.0.113.7'
 
 # [time in seconds, number of requests]

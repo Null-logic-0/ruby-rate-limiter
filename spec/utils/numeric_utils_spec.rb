@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Utils::NumericUtils do
+RSpec.describe RateGuard::Utils::NumericUtils do
   describe '.positive_number?' do
     [1, 0.5, 1e-9, Rational(1, 3), 2**64, Float::MAX].each do |value|
       it "is true for #{value.inspect}" do
@@ -62,7 +62,7 @@ RSpec.describe RateLimiter::Utils::NumericUtils do
   end
 
   it 'can be called on the module or mixed into a class' do
-    host = Class.new { include RateLimiter::Utils::NumericUtils }.new
+    host = Class.new { include RateGuard::Utils::NumericUtils }.new
 
     expect(host.send(:positive_number?, 2)).to be(true)
     expect(described_class.positive_integer?(2)).to be(true)

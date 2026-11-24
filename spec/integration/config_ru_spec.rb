@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'rack/test'
-require 'rate_limiter/middleware'
+require 'rate_guard/middleware'
 
 RSpec.describe 'config.ru' do
   include Rack::Test::Methods
@@ -10,10 +10,8 @@ RSpec.describe 'config.ru' do
                 RATE_LIMIT_API_KEYS RATE_LIMIT_PREMIUM_API_KEYS RATE_LIMIT_GLOBAL RATE_LIMIT_BYPASS_IPS
                 RATE_LIMIT_BYPASS_API_KEYS RATE_LIMIT_LOG_LEVEL RATE_LIMIT_REDIS_LOG_INTERVAL]
 
-  # Start every example from the defaults, whatever the shell has set, and
-  # restore the environment and global configuration afterwards. config.ru
-  # logs to $stdout, so each example gets its own buffer: the lines can be
-  # checked, and they stay out of the test output.
+  # Each example starts from default ENV and config, and captures
+  # config.ru's log output instead of printing it.
   around do |example|
     saved = ENV.to_h.slice(*settings)
     original_stdout = $stdout
@@ -24,19 +22,19 @@ RSpec.describe 'config.ru' do
     $stdout = original_stdout
     settings.each { |name| ENV.delete(name) }
     ENV.update(saved)
-    RateLimiter.reset_configuration!
+    RateGuard.reset_configuration!
   end
 
-  # Every line config.ru logged in this example, parsed (each must be JSON).
+  # Log lines from this example, parsed as JSON.
   def log_lines = $stdout.string.lines.map { |line| JSON.parse(line) }
 
-  # Each call builds a separate server: its own limiter, its own Redis client.
+  # Each call builds a separate server (own limiter, own Redis client).
   def build_app
     Rack::Builder.parse_file(File.expand_path('../../config.ru', __dir__))
   end
 
   let(:app) { build_app }
-  let(:client_key) { last_request.env[RateLimiter::Middleware::CLIENT_KEY] }
+  let(:client_key) { last_request.env[RateGuard::Middleware::CLIENT_KEY] }
 
   def burst(path, count, headers = {})
     Array.new(count) do
@@ -108,7 +106,7 @@ RSpec.describe 'config.ru' do
 
   describe 'the endpoint table' do
     # Frozen clock: nothing refills mid-burst, so every count is exact.
-    before { allow(RateLimiter::Clock::Monotonic).to receive(:now).and_return(1_000.0) }
+    before { allow(RateGuard::Clock::Monotonic).to receive(:now).and_return(1_000.0) }
 
     def statuses(count, verb = :get, path = '/public', body = nil, env = {})
       Array.new(count) do
@@ -288,7 +286,7 @@ RSpec.describe 'config.ru' do
 
       get '/limited'
 
-      expect(RateLimiter.configuration.algorithm).to eq(:sliding_window_log)
+      expect(RateGuard.configuration.algorithm).to eq(:sliding_window_log)
       expect(last_response.headers['ratelimit-reset']).to eq('10')
     end
 
@@ -303,21 +301,21 @@ RSpec.describe 'config.ru' do
     it 'refuses to boot with an unknown algorithm' do
       ENV['RATE_LIMIT_ALGORITHM'] = 'leaky_bucket'
 
-      expect { app }.to raise_error(RateLimiter::ConfigurationError, /:leaky_bucket is not registered/)
+      expect { app }.to raise_error(RateGuard::ConfigurationError, /:leaky_bucket is not registered/)
     end
 
     it 'refuses to boot with a queue algorithm' do
       ENV['RATE_LIMIT_ALGORITHM'] = 'leaky_bucket_queue'
 
-      expect { app }.to raise_error(RateLimiter::ConfigurationError, /RateLimiter\.queue/)
+      expect { app }.to raise_error(RateGuard::ConfigurationError, /RateGuard\.queue/)
     end
   end
 
   describe 'shared state through Redis', :redis do
-    # Each policy has its own namespace, and rack-test sends from 127.0.0.1.
-    let(:shared_key) { 'rate_limiter:limited:w60:ip:127.0.0.1' }
-    let(:public_key) { 'rate_limiter:public:w60:ip:127.0.0.1' }
-    let(:global_key) { 'rate_limiter:global:w60:global' } # shared by every client, so clean it too
+    # Each policy has its own namespace; rack-test uses 127.0.0.1.
+    let(:shared_key) { 'rate_guard:limited:w60:ip:127.0.0.1' }
+    let(:public_key) { 'rate_guard:public:w60:ip:127.0.0.1' }
+    let(:global_key) { 'rate_guard:global:w60:global' } # shared by every client, so clean it too
 
     before do
       ENV['REDIS_URL'] = redis_url

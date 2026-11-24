@@ -1,16 +1,14 @@
 # frozen_string_literal: true
 
-# Coverage must start before any application code is loaded, so it comes
-# first. It only runs when asked (COVERAGE=1), because the minimum below only
-# makes sense for the whole suite, not for a single spec file.
+# Coverage must start first. Only with COVERAGE=1 (whole suite).
 if ENV['COVERAGE']
   require 'simplecov'
 
   SimpleCov.start do
     enable_coverage :branch
     add_filter '/spec/'
-    add_group 'Algorithms', 'lib/rate_limiter/algorithms'
-    add_group 'Middleware', 'lib/rate_limiter/middleware'
+    add_group 'Algorithms', 'lib/rate_guard/algorithms'
+    add_group 'Middleware', 'lib/rate_guard/middleware'
     add_group 'App', 'app/'
     minimum_coverage line: 98, branch: 95
   end
@@ -18,7 +16,7 @@ end
 
 ENV['RACK_ENV'] = 'test'
 
-require 'rate_limiter'
+require 'rate_guard'
 
 Dir[File.join(__dir__, 'support', '**', '*.rb')].each { |file| require file }
 

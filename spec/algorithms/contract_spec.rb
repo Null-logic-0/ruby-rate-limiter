@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
-# Every immediate algorithm (one whose #acquire answers allow-or-reject right
-# away) must keep the same promises, so the HTTP middleware can treat them all
-# alike. Each is built by name, exactly as an application would build it:
-# limit 10 per window of 10 seconds, on a clock frozen at t = 600.0.
+# Every immediate algorithm must behave the same way, so the middleware
+# can use any of them. Limit 10 per 10 s, clock frozen at 600.0.
 RSpec.describe 'Immediate algorithm contract' do
-  # Seconds until the consumer's limit has fully reset, after ONE request at 600.0.
+  # Seconds until fully reset after one request at 600.0.
   expected_reset_after = {
     token_bucket: 1.0,            # refills 10/10 = 1 token per second, and 1 token is missing
     leaky_bucket_meter: 1.0,      # leaks 10/10 = 1 unit per second, and holds 1 unit
@@ -15,8 +13,8 @@ RSpec.describe 'Immediate algorithm contract' do
   }.freeze
 
   it 'covers every registered immediate algorithm' do
-    immediate = RateLimiter::Registry.names.select do |name|
-      RateLimiter::Registry.fetch(name).kind == :immediate
+    immediate = RateGuard::Registry.names.select do |name|
+      RateGuard::Registry.fetch(name).kind == :immediate
     end
 
     expect(expected_reset_after.keys).to match_array(immediate)
@@ -24,12 +22,12 @@ RSpec.describe 'Immediate algorithm contract' do
 
   expected_reset_after.each do |algorithm, expected|
     describe algorithm.to_s do
-      subject(:limiter) { RateLimiter::Registry.build(config) }
+      subject(:limiter) { RateGuard::Registry.build(config) }
 
       let(:clock) { FakeClock.new(600.0) }
       let(:key) { 'ip:203.0.113.7' }
       let(:config) do
-        RateLimiter::Configuration.new.tap do |settings|
+        RateGuard::Configuration.new.tap do |settings|
           settings.algorithm = algorithm
           settings.limit = 10
           settings.window = 10

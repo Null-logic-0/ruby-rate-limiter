@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::TokenBucket do
+RSpec.describe RateGuard::Algorithms::TokenBucket do
   subject(:bucket) { described_class.new(capacity: 10, refill_rate: 1, clock: clock) }
 
   let(:clock) { FakeClock.new }

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/algorithms/redis_sliding_window_counter'
+require 'rate_guard/algorithms/redis_sliding_window_counter'
 
-RSpec.describe RateLimiter::Algorithms::RedisSlidingWindowCounter do
+RSpec.describe RateGuard::Algorithms::RedisSlidingWindowCounter do
   let(:key) { 'ip:203.0.113.7' }
 
   # A stand-in for a Redis client that fails every call with `error`.
@@ -114,7 +114,7 @@ RSpec.describe RateLimiter::Algorithms::RedisSlidingWindowCounter do
 
     it 'makes exactly the same decisions as the in-memory counter' do
       sim_clock = FakeClock.new(0.0)
-      in_memory = RateLimiter::Algorithms::SlidingWindowCounter.new(limit: 10, window: 60, clock: sim_clock)
+      in_memory = RateGuard::Algorithms::SlidingWindowCounter.new(limit: 10, window: 60, clock: sim_clock)
       shared = build(clock: sim_clock)
       random = Random.new(3)
 

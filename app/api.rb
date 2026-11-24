@@ -2,8 +2,7 @@
 
 require 'sinatra/base'
 
-# Demo HTTP API used to exercise the rate limiter. Rate limiting is entirely
-# config.ru's job: these routes know nothing about it.
+# Demo API. Rate limiting is set up in config.ru, not here.
 class Api < Sinatra::Base
   set :default_content_type, 'text/plain'
 

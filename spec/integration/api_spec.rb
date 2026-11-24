@@ -60,8 +60,8 @@ RSpec.describe Api do
     expect(last_response.status).to eq(404)
   end
 
-  # Sinatra decodes and cleans paths before routing. The rate-limiting
-  # middleware must recognise all of these too, or they become a bypass.
+  # Sinatra cleans paths before routing; the middleware must too,
+  # or these would skip the limit.
   describe 'alternative spellings of /limited' do
     ['/%6Cimited', '/lim%69ted', '/./limited', '/x/../limited', '/%2e%2e/limited'].each do |path|
       it "routes #{path} to /limited" do

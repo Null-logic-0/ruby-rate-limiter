@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Validators::CostValidator do
+RSpec.describe RateGuard::Validators::CostValidator do
   def validate(cost, maximum: 10, type: :integer, **options)
     described_class.validate!(cost: cost, maximum: maximum, type: type, **options)
   end

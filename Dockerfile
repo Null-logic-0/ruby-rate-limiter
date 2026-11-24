@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# ---- Stage 1: install gems, compiling native extensions (Puma's parser) ----
+# ---- Stage 1: install gems ----
 FROM ruby:4.0-slim AS build
 
 RUN apt-get update \
@@ -12,11 +12,14 @@ ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_WITHOUT=development:test \
     BUNDLE_PATH=/usr/local/bundle
 
-COPY Gemfile Gemfile.lock ./
+# Bundler reads the gemspec, which reads version.rb. Copying only these
+# keeps this slow step cached.
+COPY Gemfile Gemfile.lock rate_guard.gemspec ./
+COPY lib/rate_guard/version.rb ./lib/rate_guard/
 RUN bundle install --jobs 4 \
  && rm -rf /usr/local/bundle/cache
 
-# ---- Stage 2: the runtime image, without compilers or test code ----
+# ---- Stage 2: runtime image, no compilers or tests ----
 FROM ruby:4.0-slim
 
 WORKDIR /app
@@ -26,13 +29,12 @@ ENV BUNDLE_DEPLOYMENT=1 \
     RACK_ENV=production
 
 COPY --from=build /usr/local/bundle /usr/local/bundle
-COPY Gemfile Gemfile.lock config.ru ./
+# bundle exec reads the gemspec at boot too.
+COPY Gemfile Gemfile.lock rate_guard.gemspec config.ru ./
 COPY app ./app
 COPY lib ./lib
 
-# COPY keeps the permissions the files have on your machine, where they may be
-# readable only by you. Make the code readable (not writable) by everyone, so
-# the unprivileged user below can load it but never change it.
+# Let the non-root user read (not change) the code.
 RUN chmod -R a+rX /app \
  && useradd --system --uid 1000 --home-dir /app app
 USER app

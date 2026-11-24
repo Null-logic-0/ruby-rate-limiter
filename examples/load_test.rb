@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
-# Sends real HTTP traffic to a running server from several virtual users and
-# prints, second by second, how many requests were accepted and how many were
-# rejected with 429: the command-line version of the challenge's Postman test.
+# Sends real HTTP traffic to a running server and prints accepted
+# vs 429 per second.
 
 #   bundle exec ruby examples/load_test.rb [URL] [USERS] [SECONDS]
 #   bundle exec ruby examples/load_test.rb http://127.0.0.1:8080/limited 10 10
@@ -19,7 +18,7 @@ started = clock.call
 deadline = started + duration
 outcomes = Queue.new # [second the request started in, HTTP status]
 
-# Each virtual user keeps one connection open and sends requests back to back.
+# Each user keeps one connection and sends requests back to back.
 workers = Array.new(users) do
   Thread.new do
     Net::HTTP.start(url.host, url.port) do |http|

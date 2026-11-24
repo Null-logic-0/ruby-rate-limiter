@@ -2,25 +2,22 @@
 
 require 'benchmark'
 require 'objspace'
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-# Shared pieces for the benchmark scripts. Every workload is deterministic:
-# keys come from a seeded Random, time comes from a clock the script steps,
-# and each measurement is warmed up, repeated, and reported as the median.
+# Shared benchmark helpers. Same keys and timeline every run;
+# each result is the median of several rounds.
 module Bench
-  # Sizes, overridable for a quicker or a longer run.
+  # Sizes; override with ENV.
   OPS = Integer(ENV.fetch('BENCH_OPS', '50_000').delete('_'))
   ROUNDS = Integer(ENV.fetch('BENCH_ROUNDS', '5'))
   CLIENTS = Integer(ENV.fetch('BENCH_CLIENTS', '1_000').delete('_'))
-  # Each Redis decision is a network round trip (~50x slower), so the Redis
-  # rows run a tenth of the operations; per-operation figures stay comparable.
+  # Redis is much slower, so its rows do a tenth of the work.
   REDIS_OPS = [OPS / 10, 1_000].max
   LIMIT = 100
   WINDOW = 60
   SEED = 42
 
-  # Time that moves only when told to, so every run sees the same timeline.
-  # A request every 2 ms: 30,000 requests a minute spread over the clients.
+  # A clock moved by hand: 2 ms per request.
   class SteppingClock
     STEP = 0.002
 
@@ -33,8 +30,7 @@ module Bench
     def tick = @now += STEP
   end
 
-  # A frozen clock, for threads: advancing a shared clock from many threads
-  # would itself be a race. Nothing refills, so `limit` is exact.
+  # A clock that never moves, safe to share between threads.
   class FrozenClock
     def now = 1_000_000.0
   end
@@ -43,7 +39,7 @@ module Bench
 
   def redis_url = ENV.fetch('TEST_REDIS_URL') { ENV.fetch('REDIS_URL', 'redis://127.0.0.1:6379/15') }
 
-  # A Redis client if one answers at redis_url, else nil (and the Redis rows are skipped).
+  # A Redis client, or nil if none is running (Redis rows are skipped).
   def redis
     return @redis if defined?(@redis)
 
@@ -53,9 +49,7 @@ module Bench
     @redis = nil
   end
 
-  # The same Redis behind a pool of 16 connections (13C), or nil when there is
-  # no Redis or connection_pool can't be loaded. It's already in the bundle,
-  # through redis-client.
+  # Redis with a pool of 16 connections, or nil.
   def pooled_redis
     return @pooled_redis if defined?(@pooled_redis)
 
@@ -67,17 +61,16 @@ module Bench
     end
   end
 
-  def namespace = "rate_limiter_bench:#{Process.pid}"
+  def namespace = "rate_guard_bench:#{Process.pid}"
 
-  # Deletes every key this benchmark wrote, and nothing else.
+  # Deletes only this benchmark's keys.
   def clean_redis
     redis&.scan_each(match: "#{namespace}:*") { |key| redis.del(key) }
   end
 
-  # Every algorithm to compare: [name, kind, builder(clock)]. Built through
-  # the registry, exactly as an application builds them.
+  # [name, kind, builder(clock)] for each algorithm, built via the registry.
   def algorithms
-    names = RateLimiter::Registry.names.map { |name| [name, RateLimiter::Registry.fetch(name).kind] }
+    names = RateGuard::Registry.names.map { |name| [name, RateGuard::Registry.fetch(name).kind] }
     list = names.map { |name, kind| [name.to_s, kind, ->(clock) { build(name, clock) }] }
     return list unless redis
 
@@ -85,7 +78,7 @@ module Bench
   end
 
   def build(name, clock, redis_client = nil)
-    config = RateLimiter::Configuration.new.tap do |c|
+    config = RateGuard::Configuration.new.tap do |c|
       c.algorithm = name
       c.limit = LIMIT
       c.window = WINDOW
@@ -93,11 +86,11 @@ module Bench
       c.redis = redis_client
       c.namespace = namespace
     end
-    kind = RateLimiter::Registry.fetch(name).kind
-    kind == :queue ? RateLimiter.queue(config) : RateLimiter.limiter(config)
+    kind = RateGuard::Registry.fetch(name).kind
+    kind == :queue ? RateGuard.queue(config) : RateGuard.limiter(config)
   end
 
-  # The same sequence of client keys for every algorithm and every run.
+  # The same client keys every run.
   def keys(count = OPS, clients: CLIENTS)
     random = Random.new(SEED)
     Array.new(count) { "ip:client-#{random.rand(clients)}" }
@@ -107,8 +100,7 @@ module Bench
 
   def ops_for(name) = redis?(name) ? REDIS_OPS : OPS
 
-  # One decision: acquire for immediate algorithms; enqueue then dequeue for
-  # the queue, since a queue only does its job when both happen.
+  # One decision: acquire, or enqueue + dequeue for the queue.
   def decide(limiter, kind, key)
     if kind == :queue
       limiter.enqueue(key, :job)
@@ -118,9 +110,7 @@ module Bench
     end
   end
 
-  # Runs the block once to warm up, then ROUNDS times, and returns the median
-  # of whatever it returns (a number, or an Array of numbers compared by its
-  # first element).
+  # Warm up once, run ROUNDS times, return the median.
   def median_of_rounds
     yield
     results = Array.new(ROUNDS) { yield }
@@ -129,7 +119,7 @@ module Bench
 
   def median(values) = values.sort[values.size / 2]
 
-  # A plain-text table: first column left-aligned, the rest right-aligned.
+  # A plain-text table.
   def table(headers, rows)
     all = [headers, *rows].map { |row| row.map(&:to_s) }
     widths = headers.each_index.map { |i| all.map { |row| row[i].size }.max }

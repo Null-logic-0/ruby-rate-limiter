@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/identifiers'
+require 'rate_guard/identifiers'
 
-RSpec.describe RateLimiter::Identifiers::FirstOf do
+RSpec.describe RateGuard::Identifiers::FirstOf do
   subject(:chain) do
-    described_class.new(RateLimiter::Identifiers::User.new, RateLimiter::Identifiers::ApiKey.new,
-                        RateLimiter::Identifiers::Ip.new)
+    described_class.new(RateGuard::Identifiers::User.new, RateGuard::Identifiers::ApiKey.new,
+                        RateGuard::Identifiers::Ip.new)
   end
 
   let(:anonymous) { { 'REMOTE_ADDR' => '203.0.113.7' } }
 
   it 'uses the user when someone is logged in' do
-    env = anonymous.merge('rate_limiter.user_id' => 42, 'HTTP_X_API_KEY' => 'sk_live_1')
+    env = anonymous.merge('rate_guard.user_id' => 42, 'HTTP_X_API_KEY' => 'sk_live_1')
 
     expect(chain.call(env)).to eq('user:42')
   end
@@ -25,7 +25,7 @@ RSpec.describe RateLimiter::Identifiers::FirstOf do
   end
 
   it 'returns nil when no identifier can identify the request' do
-    expect(described_class.new(RateLimiter::Identifiers::User.new).call(anonymous)).to be_nil
+    expect(described_class.new(RateGuard::Identifiers::User.new).call(anonymous)).to be_nil
   end
 
   it 'skips an identifier that returns an empty key' do
@@ -33,9 +33,9 @@ RSpec.describe RateLimiter::Identifiers::FirstOf do
   end
 
   it 'accepts any callable as a custom strategy' do
-    # e.g. an API gateway in front verified an OAuth token and stored its client id
+    # e.g. a gateway verified a token and stored the client id
     gateway_client = ->(env) { (id = env['gateway.client_id']) && "client:#{id}" }
-    chain = described_class.new(gateway_client, RateLimiter::Identifiers::Ip.new)
+    chain = described_class.new(gateway_client, RateGuard::Identifiers::Ip.new)
 
     expect(chain.call(anonymous.merge('gateway.client_id' => 'mobile-app'))).to eq('client:mobile-app')
     expect(chain.call(anonymous)).to eq('ip:203.0.113.7')

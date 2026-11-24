@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A clock tests control: time only moves when the test calls #advance.
+# A test clock: time moves only on #advance.
 class FakeClock
   attr_reader :now
 

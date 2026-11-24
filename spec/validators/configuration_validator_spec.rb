@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Validators::ConfigurationValidator do
+RSpec.describe RateGuard::Validators::ConfigurationValidator do
   def validate(**attributes)
     described_class.validate!(**attributes)
   end

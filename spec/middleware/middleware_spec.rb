@@ -3,13 +3,13 @@
 require 'delegate'
 require 'json'
 require 'stringio'
-require 'rate_limiter/middleware'
+require 'rate_guard/middleware'
 
-RSpec.describe RateLimiter::Middleware do
+RSpec.describe RateGuard::Middleware do
   subject(:middleware) { described_class.new(inner_app, limiter: limiter, paths: ['/limited']) }
 
   let(:clock) { FakeClock.new }
-  let(:limiter) { RateLimiter::Algorithms::TokenBucket.new(capacity: 2, refill_rate: 1, clock: clock) }
+  let(:limiter) { RateGuard::Algorithms::TokenBucket.new(capacity: 2, refill_rate: 1, clock: clock) }
   let(:app_calls) { [] }
   let(:inner_app) do
     lambda do |env|
@@ -18,7 +18,7 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
-  # Builds a Rack env with a raw PATH_INFO, exactly as Puma would pass it.
+  # A Rack env with a raw PATH_INFO, as Puma sends it.
   def build_env(path, extra = {})
     Rack::MockRequest.env_for('/').merge('PATH_INFO' => path, 'REMOTE_ADDR' => '203.0.113.7', **extra)
   end
@@ -50,7 +50,7 @@ RSpec.describe RateLimiter::Middleware do
 
   describe 'construction' do
     it 'refuses a queue algorithm, which cannot answer allow-or-reject immediately' do
-      queue = RateLimiter::Algorithms::LeakyBucketQueue.new(capacity: 2, leak_rate: 1, clock: clock)
+      queue = RateGuard::Algorithms::LeakyBucketQueue.new(capacity: 2, leak_rate: 1, clock: clock)
 
       expect { described_class.new(inner_app, limiter: queue, paths: ['/limited']) }
         .to raise_error(ArgumentError, /queue algorithms/)
@@ -64,7 +64,7 @@ RSpec.describe RateLimiter::Middleware do
     it 'refuses identifier: and client_ip: together, since only one of them could be used' do
       expect do
         described_class.new(inner_app, limiter: limiter, paths: ['/limited'],
-                                        identifier: RateLimiter::Identifiers::Ip.new, client_ip: ->(_env) { '1.2.3.4' })
+                                        identifier: RateGuard::Identifiers::Ip.new, client_ip: ->(_env) { '1.2.3.4' })
       end.to raise_error(ArgumentError, /not both/)
     end
   end
@@ -101,20 +101,20 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
-  # The same capacity-2 bucket, but identified by API key, user and IP.
+  # Same bucket, identified by API key, user and IP.
   describe 'pluggable identifiers' do
     subject(:middleware) do
       described_class.new(inner_app, limiter: limiter, paths: ['/limited'], identifier: identifier)
     end
 
     let(:identifier) do
-      RateLimiter::Identifiers::FirstOf.new(RateLimiter::Identifiers::User.new, RateLimiter::Identifiers::ApiKey.new,
-                                            RateLimiter::Identifiers::Ip.new)
+      RateGuard::Identifiers::FirstOf.new(RateGuard::Identifiers::User.new, RateGuard::Identifiers::ApiKey.new,
+                                            RateGuard::Identifiers::Ip.new)
     end
     let(:api_key) { 'sk_live_4f9a2c7e1b8d' }
 
     def with_key(key, ip = '203.0.113.7') = { 'HTTP_X_API_KEY' => key, 'REMOTE_ADDR' => ip }
-    def as_user(id, ip = '203.0.113.7') = { 'rate_limiter.user_id' => id, 'REMOTE_ADDR' => ip }
+    def as_user(id, ip = '203.0.113.7') = { 'rate_guard.user_id' => id, 'REMOTE_ADDR' => ip }
 
     it 'gives different API keys separate limits' do
       2.times { request('/limited', with_key(api_key)) }
@@ -166,7 +166,7 @@ RSpec.describe RateLimiter::Middleware do
     end
 
     describe 'when the identifier cannot identify the request' do
-      let(:identifier) { RateLimiter::Identifiers::ApiKey.new }
+      let(:identifier) { RateGuard::Identifiers::ApiKey.new }
 
       it 'counts it as "anonymous" rather than letting it through unlimited' do
         expect(client_key_for('/limited')).to eq('anonymous')
@@ -180,18 +180,18 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
-  # Two policies: /public (3 per window) and a global cap (5) over /public and
-  # /upload; 10.0.0.1 is trusted.
+  # /public allows 3, a global cap of 5 covers /public and /upload;
+  # 10.0.0.1 is trusted.
   describe 'with a PolicySet' do
     subject(:middleware) { described_class.new(inner_app, policies: policies) }
 
-    let(:public_limiter) { RateLimiter::Algorithms::FixedWindowCounter.new(limit: 3, window: 60, clock: clock) }
-    let(:global_limiter) { RateLimiter::Algorithms::FixedWindowCounter.new(limit: 5, window: 60, clock: clock) }
+    let(:public_limiter) { RateGuard::Algorithms::FixedWindowCounter.new(limit: 3, window: 60, clock: clock) }
+    let(:global_limiter) { RateGuard::Algorithms::FixedWindowCounter.new(limit: 5, window: 60, clock: clock) }
     let(:policies) do
-      RateLimiter::PolicySet.new(
-        [RateLimiter::Policy.new(name: 'public', methods: %w[GET], paths: %w[/public], limiter: public_limiter),
-         RateLimiter::Policy.new(name: 'global', paths: %w[/public /upload], limiter: global_limiter,
-                                 identifier: RateLimiter::Identifiers::Global.new)],
+      RateGuard::PolicySet.new(
+        [RateGuard::Policy.new(name: 'public', methods: %w[GET], paths: %w[/public], limiter: public_limiter),
+         RateGuard::Policy.new(name: 'global', paths: %w[/public /upload], limiter: global_limiter,
+                                 identifier: RateGuard::Identifiers::Global.new)],
         bypass: ->(env) { env['REMOTE_ADDR'] == '10.0.0.1' }
       )
     end
@@ -256,7 +256,7 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
-  # Rejections, metrics and logs, with the same capacity-2 bucket.
+  # Rejections, metrics and logs.
   describe 'operations' do
     subject(:middleware) do
       described_class.new(inner_app, limiter: limiter, paths: ['/limited'], identifier: identifier,
@@ -265,11 +265,11 @@ RSpec.describe RateLimiter::Middleware do
 
     let(:options) { {} }
     let(:identifier) do
-      RateLimiter::Identifiers::FirstOf.new(RateLimiter::Identifiers::ApiKey.new, RateLimiter::Identifiers::Ip.new)
+      RateGuard::Identifiers::FirstOf.new(RateGuard::Identifiers::ApiKey.new, RateGuard::Identifiers::Ip.new)
     end
     let(:log) { StringIO.new }
-    let(:logger) { RateLimiter::JsonLogFormatter.logger(log) }
-    let(:metrics) { RateLimiter::Metrics::InMemory.new }
+    let(:logger) { RateGuard::JsonLogFormatter.logger(log) }
+    let(:metrics) { RateGuard::Metrics::InMemory.new }
     let(:log_lines) { log.string.lines.map { |line| JSON.parse(line) } }
 
     describe 'a custom responder' do
@@ -307,20 +307,20 @@ RSpec.describe RateLimiter::Middleware do
       it 'counts allowed and rejected requests, tagged with the policy and algorithm' do
         3.times { request('/limited') }
 
-        expect(metrics.count('rate_limiter.allowed', policy: 'default', algorithm: 'token_bucket')).to eq(2)
-        expect(metrics.count('rate_limiter.rejected', policy: 'default', algorithm: 'token_bucket')).to eq(1)
+        expect(metrics.count('rate_guard.allowed', policy: 'default', algorithm: 'token_bucket')).to eq(2)
+        expect(metrics.count('rate_guard.rejected', policy: 'default', algorithm: 'token_bucket')).to eq(1)
       end
 
       it 'counts bypassed requests, and nothing for paths no policy covers' do
-        trusted = RateLimiter::PolicySet.new(RateLimiter::Policy.new(name: 'p', paths: %w[/limited], limiter: limiter),
+        trusted = RateGuard::PolicySet.new(RateGuard::Policy.new(name: 'p', paths: %w[/limited], limiter: limiter),
                                              bypass: ->(_env) { true })
         app = described_class.new(inner_app, policies: trusted, metrics: metrics)
 
         2.times { app.call(build_env('/limited')) }
         app.call(build_env('/unlimited'))
 
-        expect(metrics.count('rate_limiter.bypassed')).to eq(2)
-        expect(metrics.count('rate_limiter.allowed')).to eq(0)
+        expect(metrics.count('rate_guard.bypassed')).to eq(2)
+        expect(metrics.count('rate_guard.allowed')).to eq(0)
       end
 
       it 'times each decision with the injected clock' do
@@ -335,7 +335,7 @@ RSpec.describe RateLimiter::Middleware do
 
         app.call(build_env('/limited'))
 
-        expect(metrics.timings('rate_limiter.decision', policy: 'default').map { |t| t.round(6) }).to eq([0.003])
+        expect(metrics.timings('rate_guard.decision', policy: 'default').map { |t| t.round(6) }).to eq([0.003])
       end
     end
 
@@ -442,8 +442,7 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
-  # Capacity 2, refilling 1 token per second: each request leaves the bucket
-  # one token further from full, so ratelimit-reset grows by a second.
+  # Capacity 2, 1 token per second: each request adds a second to reset.
   describe 'rate limit headers' do
     it 'reports limit, remaining and reset on the first request' do
       expect(headers_of('/limited'))
@@ -470,7 +469,7 @@ RSpec.describe RateLimiter::Middleware do
       2.times { request('/limited') }
       clock.advance(0.25)
 
-      # 0.75 s until one token is back, 1.75 s until the bucket is full again.
+      # 0.75 s until one token is back, 1.75 s until full.
       expect(headers_of('/limited')).to include('retry-after' => '1', 'ratelimit-reset' => '2')
     end
 
@@ -479,7 +478,7 @@ RSpec.describe RateLimiter::Middleware do
         def limit = 5
 
         def acquire(_key, cost: 1)
-          RateLimiter::Result.new(allowed: false, remaining: 0, retry_after: 1.0000000000000002,
+          RateGuard::Result.new(allowed: false, remaining: 0, retry_after: 1.0000000000000002,
                                   reset_after: 10.000000000000002)
         end
       end
@@ -495,7 +494,7 @@ RSpec.describe RateLimiter::Middleware do
         def limit = 5
 
         def acquire(_key, cost: 1)
-          RateLimiter::Result.new(allowed: true, remaining: 5 - cost, retry_after: 0.0)
+          RateGuard::Result.new(allowed: true, remaining: 5 - cost, retry_after: 0.0)
         end
       end
       app = described_class.new(inner_app, limiter: custom.new, paths: ['/limited'])
@@ -516,24 +515,24 @@ RSpec.describe RateLimiter::Middleware do
       middleware.call(env)
 
       expect(env[described_class::RESULT_KEY])
-        .to be_a(RateLimiter::Result).and have_attributes(allowed?: true, remaining: 1)
+        .to be_a(RateGuard::Result).and have_attributes(allowed?: true, remaining: 1)
     end
   end
 
   describe 'the 429 response' do
-    immediate = RateLimiter::Registry.names.select do |name|
-      RateLimiter::Registry.fetch(name).kind == :immediate
+    immediate = RateGuard::Registry.names.select do |name|
+      RateGuard::Registry.fetch(name).kind == :immediate
     end
 
     immediate.each do |algorithm|
       it "is the same for #{algorithm}" do
-        config = RateLimiter::Configuration.new.tap do |settings|
+        config = RateGuard::Configuration.new.tap do |settings|
           settings.algorithm = algorithm
           settings.limit = 1
           settings.window = 60
           settings.clock = FakeClock.new(600.0)
         end
-        app = described_class.new(inner_app, limiter: RateLimiter.limiter(config), paths: ['/limited'])
+        app = described_class.new(inner_app, limiter: RateGuard.limiter(config), paths: ['/limited'])
 
         app.call(build_env('/limited'))
         status, headers, body = app.call(build_env('/limited'))

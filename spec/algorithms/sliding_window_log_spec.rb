@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::SlidingWindowLog do
+RSpec.describe RateGuard::Algorithms::SlidingWindowLog do
   subject(:limiter) { described_class.new(limit: 3, window: 60, clock: clock) }
 
   let(:clock) { FakeClock.new }
@@ -111,7 +111,7 @@ RSpec.describe RateLimiter::Algorithms::SlidingWindowLog do
       limiter.acquire(key)
       clock.advance(10)
 
-      # Log [0, 10, 20] at t=30: cost 2 needs two entries gone, so wait for t=10 to expire.
+      # Log [0, 10, 20] at t=30: cost 2 must wait for the entry at 10 to expire.
       expect(limiter.acquire(key, cost: 2)).to have_attributes(allowed?: false, retry_after: 40.0)
     end
   end

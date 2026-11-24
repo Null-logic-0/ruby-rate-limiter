@@ -1,17 +1,16 @@
 # frozen_string_literal: true
 
-# Measures how much memory each algorithm's state needs when 10,000 clients
-# each use their full allowance of 100 requests per minute.
+# Memory per algorithm: 10,000 clients x 100 requests a minute.
 
 # bundle exec ruby examples/log_memory.rb
 
 require 'objspace'
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
 CLIENTS = 10_000
 LIMIT = 100
 
-# Bytes of Ruby heap memory retained by whatever the block builds.
+# Heap bytes kept by what the block builds.
 def retained_bytes
   GC.start
   before = ObjectSpace.memsize_of_all
@@ -21,13 +20,12 @@ def retained_bytes
 end
 
 limiters = {
-  'Sliding window log' => -> { RateLimiter::Algorithms::SlidingWindowLog.new(limit: LIMIT, window: 60) },
-  'Sliding window counter' => -> { RateLimiter::Algorithms::SlidingWindowCounter.new(limit: LIMIT, window: 60) },
-  'Fixed window counter' => -> { RateLimiter::Algorithms::FixedWindowCounter.new(limit: LIMIT, window: 60) }
+  'Sliding window log' => -> { RateGuard::Algorithms::SlidingWindowLog.new(limit: LIMIT, window: 60) },
+  'Sliding window counter' => -> { RateGuard::Algorithms::SlidingWindowCounter.new(limit: LIMIT, window: 60) },
+  'Fixed window counter' => -> { RateGuard::Algorithms::FixedWindowCounter.new(limit: LIMIT, window: 60) }
 }
 
-# Keep every limiter alive until the end, so freeing one can't distort the
-# next measurement.
+# Keep limiters alive so they don't skew later measurements.
 kept = []
 
 puts format(

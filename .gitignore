@@ -5,6 +5,7 @@
 
 # Ruby
 *.gem
+/pkg/
 *.rbc
 /.byebug_history
 

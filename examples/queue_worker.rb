@@ -1,16 +1,15 @@
 # frozen_string_literal: true
 
-# A producer submits 8 jobs at once to a queue that holds 5 and releases
-# 2 per second. A worker thread processes them at exactly that rate.
+# 8 jobs into a queue of 5 that releases 2 per second; a worker runs them.
 #
 #   bundle exec ruby examples/queue_worker.rb
 
-require_relative '../lib/rate_limiter'
+require_relative '../lib/rate_guard'
 
-queue = RateLimiter::Algorithms::LeakyBucketQueue.new(capacity: 5, leak_rate: 2)
+queue = RateGuard::Algorithms::LeakyBucketQueue.new(capacity: 5, leak_rate: 2)
 key = 'outbound:sms-provider'
-started_at = RateLimiter::Clock::Monotonic.now
-elapsed = -> { format('%4.1fs', RateLimiter::Clock::Monotonic.now - started_at) }
+started_at = RateGuard::Clock::Monotonic.now
+elapsed = -> { format('%4.1fs', RateGuard::Clock::Monotonic.now - started_at) }
 
 puts 'Producer'
 8.times do |number|

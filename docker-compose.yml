@@ -1,7 +1,6 @@
 # Two API servers sharing one Redis:
-#   server A -> http://127.0.0.1:8080
-#   server B -> http://127.0.0.1:8081
-#   Redis    -> 127.0.0.1:6379
+#   A -> http://127.0.0.1:8080
+#   B -> http://127.0.0.1:8081
 #
 #   docker compose up --build
 

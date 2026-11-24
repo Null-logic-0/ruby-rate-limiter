@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/identifiers'
+require 'rate_guard/identifiers'
 
-RSpec.describe RateLimiter::Identifiers::Global do
+RSpec.describe RateGuard::Identifiers::Global do
   it 'gives every request the same key' do
     keys = [{ 'REMOTE_ADDR' => '203.0.113.7' }, {}].map { |env| described_class.new.call(env) }
 

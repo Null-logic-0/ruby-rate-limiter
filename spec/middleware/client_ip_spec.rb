@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/middleware'
+require 'rate_guard/middleware'
 
-RSpec.describe RateLimiter::Middleware::ClientIp do
+RSpec.describe RateGuard::Middleware::ClientIp do
   def env(remote_addr, forwarded_for = nil)
     { 'REMOTE_ADDR' => remote_addr, 'HTTP_X_FORWARDED_FOR' => forwarded_for }.compact
   end

@@ -1,27 +1,25 @@
 # frozen_string_literal: true
 
-require 'rate_limiter/middleware'
+require 'rate_guard/middleware'
 require_relative '../../app/api'
 
-# Many threads sending requests through the real stack at the same moment:
-# middleware, limiter and Sinatra app, as Puma's threads would.
+# Many threads through the full stack at once, like Puma.
 RSpec.describe 'Concurrent requests through the HTTP stack' do
-  registry = RateLimiter::Registry
+  registry = RateGuard::Registry
   immediate = registry.names.select { |name| registry.fetch(name).kind == :immediate }
 
-  # A stack whose limiter allows 10 requests per minute on a frozen clock, so
-  # no time passes, and nothing refills, while the threads run.
+  # 10 requests per minute, frozen clock: nothing refills.
   def build_stack(algorithm)
-    config = RateLimiter::Configuration.new.tap do |c|
+    config = RateGuard::Configuration.new.tap do |c|
       c.algorithm = algorithm
       c.limit = 10
       c.window = 60
       c.clock = FakeClock.new(600.0)
     end
-    limiter = RateLimiter.limiter(config)
+    limiter = RateGuard.limiter(config)
 
     Rack::Builder.new do
-      use RateLimiter::Middleware, limiter: limiter, paths: ['/limited']
+      use RateGuard::Middleware, limiter: limiter, paths: ['/limited']
       run Api
     end.to_app
   end

@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require 'digest'
-require 'rate_limiter/identifiers'
+require 'rate_guard/identifiers'
 
-RSpec.describe RateLimiter::Identifiers::ApiKey do
+RSpec.describe RateGuard::Identifiers::ApiKey do
   subject(:identifier) { described_class.new }
 
   let(:api_key) { 'sk_live_4f9a2c7e1b8d' }

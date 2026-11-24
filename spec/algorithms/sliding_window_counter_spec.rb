@@ -1,14 +1,13 @@
 # frozen_string_literal: true
 
-RSpec.describe RateLimiter::Algorithms::SlidingWindowCounter do
+RSpec.describe RateGuard::Algorithms::SlidingWindowCounter do
   subject(:limiter) { described_class.new(limit: 10, window: 60, clock: clock) }
 
   # 600 s is the start of a window (600-659); 660 starts the next one.
   let(:clock) { FakeClock.new(600.0) }
   let(:key) { 'ip:203.0.113.7' }
 
-  # Runs a limiter against seeded random traffic averaging `per_minute`.
-  # Returns how many requests it admitted and the most within any 60 s span.
+  # Runs random traffic. Returns total admitted and the most in any 60 s.
   def simulate(limiter_class, limit:, per_minute:, minutes: 120, seed: 1)
     sim_clock = FakeClock.new(0.0)
     sim = limiter_class.new(limit: limit, window: 60, clock: sim_clock)
@@ -170,7 +169,7 @@ RSpec.describe RateLimiter::Algorithms::SlidingWindowCounter do
   end
 
   describe 'accuracy against the exact log' do
-    let(:log_class) { RateLimiter::Algorithms::SlidingWindowLog }
+    let(:log_class) { RateGuard::Algorithms::SlidingWindowLog }
 
     it 'matches the log exactly when traffic stays under the limit' do
       counter = simulate(described_class, limit: 100, per_minute: 50)

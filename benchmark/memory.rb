@@ -1,12 +1,7 @@
 # frozen_string_literal: true
 
-# State kept per client: memory before and after 10,000 clients make 20
-# requests each, divided by 10,000. The clock is frozen, so every client's
-# state is still live when it is measured (a moving clock would let windows
-# roll over and expire part of it). In-memory algorithms are measured with
-# ObjectSpace.memsize_of_all after a full GC; the Redis counter with Redis's
-# own MEMORY USAGE. Every limiter is kept alive until the end, so freeing one
-# can't make the next look smaller.
+# Memory per client: 10,000 clients x 20 requests, frozen clock.
+# Ruby heap via ObjectSpace; Redis via MEMORY USAGE.
 #
 #   bundle exec ruby benchmark/memory.rb
 
@@ -46,8 +41,7 @@ module Bench
       (ObjectSpace.memsize_of_all - before).fdiv(CLIENTS)
     end
 
-    # Redis stores the state, so ask Redis; a sample of 200 keys is plenty,
-    # since every client's hash has the same shape.
+    # Ask Redis. 200 sample keys is enough: all have the same shape.
     def in_redis(builder)
       clock = FrozenClock.new
       limiter = builder.call(clock)

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Gem tasks: rake build, rake install:local, rake release.
+require 'bundler/gem_tasks'
 require 'rspec/core/rake_task'
 
 RSpec::Core::RakeTask.new(:spec)
