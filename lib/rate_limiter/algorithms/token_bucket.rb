@@ -19,6 +19,10 @@ module RateLimiter
 
       attr_reader :capacity, :refill_rate
 
+      # Every immediate algorithm answers #limit, so the middleware can treat
+      # them alike. For a bucket, the limit is the burst it can absorb.
+      alias limit capacity
+
       def initialize(capacity:, refill_rate:, clock: Clock::Monotonic)
         Validators::ConfigurationValidator.validate!(
           capacity: [capacity, :integer],
@@ -45,10 +49,12 @@ module RateLimiter
 
           if state.tokens + EPSILON >= cost
             state.tokens = [state.tokens - cost, 0.0].max
-            Result.new(allowed: true, remaining: whole_tokens(state), retry_after: 0.0)
+            Result.new(allowed: true, remaining: whole_tokens(state), retry_after: 0.0,
+                       reset_after: until_full(state))
           else
             retry_after = (cost - state.tokens) / @refill_rate
-            Result.new(allowed: false, remaining: whole_tokens(state), retry_after: retry_after)
+            Result.new(allowed: false, remaining: whole_tokens(state), retry_after: retry_after,
+                       reset_after: until_full(state))
           end
         end
       end
@@ -77,6 +83,12 @@ module RateLimiter
 
       def whole_tokens(state)
         (state.tokens + EPSILON).floor
+      end
+
+      # Seconds until the bucket is full again, i.e. the consumer has its whole
+      # allowance back. Tokens never exceed capacity, so this is never negative.
+      def until_full(state)
+        (@capacity - state.tokens) / @refill_rate
       end
     end
   end
