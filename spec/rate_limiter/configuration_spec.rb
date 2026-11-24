@@ -15,9 +15,9 @@ RSpec.describe RateLimiter::Configuration do
   end
 
   it 'accepts algorithm names as strings' do
-    config.algorithm = 'fixed_window_counter'
+    config.algorithm = 'fixed_window'
 
-    expect(config.algorithm).to eq(:fixed_window_counter)
+    expect(config.algorithm).to eq(:fixed_window)
   end
 
   it 'returns itself when valid' do

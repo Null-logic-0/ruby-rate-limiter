@@ -9,7 +9,7 @@ RSpec.describe 'Immediate algorithm contract' do
   expected_reset_after = {
     token_bucket: 1.0,            # refills 10/10 = 1 token per second, and 1 token is missing
     leaky_bucket_meter: 1.0,      # leaks 10/10 = 1 unit per second, and holds 1 unit
-    fixed_window_counter: 10.0,   # 600.0 starts a window (600 / 10 = 60), which ends at 610.0
+    fixed_window: 10.0,           # 600.0 starts a window (600 / 10 = 60), which ends at 610.0
     sliding_window_log: 10.0,     # the one entry, logged at 600.0, expires at 610.0
     sliding_window_counter: 20.0  # counted in window [600, 610), still weighted in [610, 620)
   }.freeze

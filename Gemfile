@@ -8,6 +8,8 @@ gem 'puma', '~> 8.0'
 gem 'rackup', '~> 2.2'
 gem 'sinatra', '~> 4.1'
 
+gem 'redis', '~> 6.1'
+
 group :development, :test do
   gem 'rack-test', '~> 2.2'
   gem 'rake', '~> 13.2'

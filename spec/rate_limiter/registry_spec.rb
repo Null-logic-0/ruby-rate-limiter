@@ -13,7 +13,7 @@ RSpec.describe RateLimiter::Registry do
   it 'registers the six built-in algorithms' do
     expect(described_class.names).to include(
       :token_bucket, :leaky_bucket_meter, :leaky_bucket_queue,
-      :fixed_window_counter, :sliding_window_log, :sliding_window_counter
+      :fixed_window, :sliding_window_log, :sliding_window_counter
     )
   end
 
@@ -28,7 +28,7 @@ RSpec.describe RateLimiter::Registry do
       token_bucket: [RateLimiter::Algorithms::TokenBucket, { capacity: 10, refill_rate: 0.5 }],
       leaky_bucket_meter: [RateLimiter::Algorithms::LeakyBucketMeter, { capacity: 10, leak_rate: 0.5 }],
       leaky_bucket_queue: [RateLimiter::Algorithms::LeakyBucketQueue, { capacity: 10, leak_rate: 0.5 }],
-      fixed_window_counter: [RateLimiter::Algorithms::FixedWindowCounter, { limit: 10, window: 20 }],
+      fixed_window: [RateLimiter::Algorithms::FixedWindowCounter, { limit: 10, window: 20 }],
       sliding_window_log: [RateLimiter::Algorithms::SlidingWindowLog, { limit: 10, window: 20 }],
       sliding_window_counter: [RateLimiter::Algorithms::SlidingWindowCounter, { limit: 10, window: 20 }]
     }.each do |name, (klass, attributes)|
@@ -64,7 +64,7 @@ RSpec.describe RateLimiter::Registry do
           RateLimiter::Result.new(allowed: true, remaining: @limit - cost, retry_after: 0.0, reset_after: 0.0)
         end
       end
-      described_class.register(:allow_all) { |limit:, **| allow_all.new(limit:) }
+      described_class.register(:allow_all) { |config| allow_all.new(limit: config.limit) }
 
       limiter = RateLimiter.limiter(config_for(:allow_all))
 

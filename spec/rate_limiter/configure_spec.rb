@@ -14,9 +14,9 @@ RSpec.describe RateLimiter do
 
   describe '.configure' do
     it 'stores a validated, frozen configuration' do
-      configure(algorithm: :fixed_window_counter)
+      configure(algorithm: :fixed_window)
 
-      expect(described_class.configuration).to have_attributes(algorithm: :fixed_window_counter, limit: 10, window: 10)
+      expect(described_class.configuration).to have_attributes(algorithm: :fixed_window, limit: 10, window: 10)
       expect(described_class.configuration).to be_frozen
     end
 
