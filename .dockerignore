@@ -1,0 +1,13 @@
+# Docker sends only what's listed here, so nothing new in the project (a .env
+# with secrets, editor folders, coverage reports, .git) can slip into an image
+# by accident. These are exactly what the Dockerfile COPYs; if you add a COPY
+# for another file or folder, add a matching "!" line here too.
+*
+!Gemfile
+!Gemfile.lock
+!config.ru
+!app/
+!lib/
+
+# Even inside the folders above, leave out macOS clutter.
+**/.DS_Store

@@ -49,6 +49,25 @@ RSpec.describe RateLimiter::Registry do
     expect(limiter.acquire('ip:203.0.113.7')).to be_allowed
   end
 
+  it 'passes on_redis_error through to the Redis-backed algorithm' do
+    unreachable = Object.new
+    %i[evalsha eval].each do |command|
+      unreachable.define_singleton_method(command) { |*, **| raise Redis::CannotConnectError, 'Connection refused' }
+    end
+    errors = []
+    config = RateLimiter::Configuration.new.tap do |settings|
+      settings.algorithm = :sliding_window_counter
+      settings.limit = 10
+      settings.window = 60
+      settings.redis = unreachable
+      settings.on_redis_error = ->(error) { errors << error }
+    end
+
+    described_class.build(config.validate!).acquire('ip:203.0.113.7')
+
+    expect(errors.map(&:class)).to eq([Redis::CannotConnectError])
+  end
+
   describe '.register' do
     after { described_class.unregister(:allow_all) }
 

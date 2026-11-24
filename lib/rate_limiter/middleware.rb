@@ -11,6 +11,10 @@ module RateLimiter
     CLIENT_KEY = 'rate_limiter.client_key'
     RESULT_KEY = 'rate_limiter.result'
 
+    # Float arithmetic on timestamps can leave a result a hair above a whole
+    # number (10.000000000000002). Rounding up must not turn that into 11.
+    ROUNDING_TOLERANCE = 1e-9
+
     def initialize(app, limiter:, paths:, client_ip: ClientIp.new)
       ensure_immediate!(limiter)
 
@@ -73,9 +77,9 @@ module RateLimiter
     end
 
     # Headers carry whole seconds. Round up, so a client that waits the
-    # advertised time is never early.
+    # advertised time is never early, but ignore float noise below a nanosecond.
     def whole_seconds(seconds)
-      seconds.ceil.to_s
+      (seconds - ROUNDING_TOLERANCE).ceil.to_s
     end
 
     def normalize(path)

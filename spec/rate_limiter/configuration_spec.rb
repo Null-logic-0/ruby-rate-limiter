@@ -54,6 +54,18 @@ RSpec.describe RateLimiter::Configuration do
       expect { config.validate! }.to raise_error(RateLimiter::ConfigurationError, /clock must respond to #now/)
     end
 
+    it 'rejects an on_redis_error without #call' do
+      fill_in.on_redis_error = Object.new
+
+      expect { config.validate! }.to raise_error(RateLimiter::ConfigurationError, /on_redis_error must respond to #call/)
+    end
+
+    it 'accepts any callable on_redis_error' do
+      fill_in.on_redis_error = ->(_error) {}
+
+      expect(config.validate!).to equal(config)
+    end
+
     it 'reports every problem at once' do
       fill_in(algorithm: :nope, limit: 0, window: nil)
 

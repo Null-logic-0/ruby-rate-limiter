@@ -103,7 +103,7 @@ module RateLimiter
         require_relative 'algorithms/redis_sliding_window_counter'
         Algorithms::RedisSlidingWindowCounter.new(
           redis: config.redis, limit: config.limit, window: config.window,
-          failure_policy: config.redis_failure_policy, **clock_option(config)
+          failure_policy: config.redis_failure_policy, on_error: config.on_redis_error, **clock_option(config)
         )
       else
         Algorithms::SlidingWindowCounter.new(limit: config.limit, window: config.window, **clock_option(config))

@@ -2,7 +2,8 @@
 
 source 'https://rubygems.org'
 
-ruby '4.0.0'
+# Any 4.0.x patch release: the Docker image (ruby:4.0-slim) tracks the newest one.
+ruby '~> 4.0.0'
 
 gem 'puma', '~> 8.0'
 gem 'rackup', '~> 2.2'

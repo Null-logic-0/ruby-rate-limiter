@@ -188,6 +188,22 @@ RSpec.describe RateLimiter::Middleware do
       expect(headers_of('/limited')).to include('retry-after' => '1', 'ratelimit-reset' => '2')
     end
 
+    it 'does not let float noise round a whole second up to the next one' do
+      noisy = Class.new do
+        def limit = 5
+
+        def acquire(_key, cost: 1)
+          RateLimiter::Result.new(allowed: false, remaining: 0, retry_after: 1.0000000000000002,
+                                  reset_after: 10.000000000000002)
+        end
+      end
+      app = described_class.new(inner_app, limiter: noisy.new, paths: ['/limited'])
+
+      _status, headers, _body = app.call(build_env('/limited'))
+
+      expect(headers).to include('retry-after' => '1', 'ratelimit-reset' => '10')
+    end
+
     it 'omits ratelimit-reset when the limiter does not report it' do
       custom = Class.new do
         def limit = 5
