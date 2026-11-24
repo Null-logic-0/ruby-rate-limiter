@@ -9,6 +9,7 @@ require_relative 'rate_limiter/algorithms/token_bucket'
 require_relative 'rate_limiter/algorithms/leaky_bucket_meter'
 require_relative 'rate_limiter/algorithms/leaky_bucket_queue'
 require_relative 'rate_limiter/algorithms/fixed_window_counter'
+require_relative 'rate_limiter/algorithms/sliding_window_log'
 
 module RateLimiter
   class Error < StandardError; end
