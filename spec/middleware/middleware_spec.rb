@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'delegate'
+require 'json'
+require 'stringio'
 require 'rate_limiter/middleware'
 
 RSpec.describe RateLimiter::Middleware do
@@ -251,6 +253,122 @@ RSpec.describe RateLimiter::Middleware do
 
     it 'refuses policies: that are not a PolicySet' do
       expect { described_class.new(inner_app, policies: [policies]) }.to raise_error(ArgumentError, /PolicySet/)
+    end
+  end
+
+  # Rejections, metrics and logs, with the same capacity-2 bucket.
+  describe 'operations' do
+    subject(:middleware) do
+      described_class.new(inner_app, limiter: limiter, paths: ['/limited'], identifier: identifier,
+                                     logger: logger, metrics: metrics, **options)
+    end
+
+    let(:options) { {} }
+    let(:identifier) do
+      RateLimiter::Identifiers::FirstOf.new(RateLimiter::Identifiers::ApiKey.new, RateLimiter::Identifiers::Ip.new)
+    end
+    let(:log) { StringIO.new }
+    let(:logger) { RateLimiter::JsonLogFormatter.logger(log) }
+    let(:metrics) { RateLimiter::Metrics::InMemory.new }
+    let(:log_lines) { log.string.lines.map { |line| JSON.parse(line) } }
+
+    describe 'a custom responder' do
+      let(:seen) { [] }
+      let(:options) do
+        { responder: lambda do |env, result, policy|
+          seen << [env['PATH_INFO'], result.remaining, policy.name]
+          [503, { 'content-type' => 'application/json' }.freeze, ['{"error":"slow down"}']]
+        end }
+      end
+
+      it 'answers rejections, with retry-after and the rate limit headers added' do
+        2.times { request('/limited') }
+
+        status, headers, body = request('/limited')
+
+        expect([status, body]).to eq([503, ['{"error":"slow down"}']])
+        expect(headers).to include('content-type' => 'application/json', 'retry-after' => '1',
+                                   'ratelimit-limit' => '2', 'ratelimit-remaining' => '0')
+      end
+
+      it 'gets the env, the result and the policy, and only for rejections' do
+        3.times { request('/limited') }
+
+        expect(seen).to eq([['/limited', 0, 'default']])
+      end
+
+      it 'must be callable' do
+        expect { described_class.new(inner_app, limiter: limiter, paths: ['/limited'], responder: 429) }
+          .to raise_error(ArgumentError, /responder must respond to #call/)
+      end
+    end
+
+    describe 'metrics' do
+      it 'counts allowed and rejected requests, tagged with the policy and algorithm' do
+        3.times { request('/limited') }
+
+        expect(metrics.count('rate_limiter.allowed', policy: 'default', algorithm: 'token_bucket')).to eq(2)
+        expect(metrics.count('rate_limiter.rejected', policy: 'default', algorithm: 'token_bucket')).to eq(1)
+      end
+
+      it 'counts bypassed requests, and nothing for paths no policy covers' do
+        trusted = RateLimiter::PolicySet.new(RateLimiter::Policy.new(name: 'p', paths: %w[/limited], limiter: limiter),
+                                             bypass: ->(_env) { true })
+        app = described_class.new(inner_app, policies: trusted, metrics: metrics)
+
+        2.times { app.call(build_env('/limited')) }
+        app.call(build_env('/unlimited'))
+
+        expect(metrics.count('rate_limiter.bypassed')).to eq(2)
+        expect(metrics.count('rate_limiter.allowed')).to eq(0)
+      end
+
+      it 'times each decision with the injected clock' do
+        fake_clock = clock
+        slow = Class.new(SimpleDelegator) do
+          define_method(:acquire) do |key, **options|
+            fake_clock.advance(0.003) # the decision takes 3 ms
+            __getobj__.acquire(key, **options)
+          end
+        end.new(limiter)
+        app = described_class.new(inner_app, limiter: slow, paths: ['/limited'], metrics: metrics, clock: clock)
+
+        app.call(build_env('/limited'))
+
+        expect(metrics.timings('rate_limiter.decision', policy: 'default').map { |t| t.round(6) }).to eq([0.003])
+      end
+    end
+
+    describe 'logs' do
+      it 'writes one JSON line per rejection with the decision in it' do
+        3.times { request('/limited') }
+
+        expect(log_lines.size).to eq(1)
+        expect(log_lines.first).to include(
+          'level' => 'warn', 'event' => 'rate_limited', 'policy' => 'default', 'key' => 'ip:203.0.113.7',
+          'path' => '/limited', 'method' => 'GET', 'limit' => 2, 'remaining' => 0, 'retry_after' => 1.0,
+          'algorithm' => 'token_bucket'
+        )
+      end
+
+      it 'logs the normalized path, as the policies saw it' do
+        3.times { request('/x/../%6Cimited') }
+
+        expect(log_lines.first['path']).to eq('/limited')
+      end
+
+      it 'never writes a raw API key, only its digest' do
+        3.times { request('/limited', 'HTTP_X_API_KEY' => 'sk_live_4f9a2c7e1b8d') }
+
+        expect(log.string).not_to include('sk_live_4f9a2c7e1b8d')
+        expect(log_lines.first['key']).to match(/\Akey:\h{16}\z/)
+      end
+
+      it 'stays silent without a logger' do
+        app = described_class.new(inner_app, limiter: limiter, paths: ['/limited'])
+
+        expect { 3.times { app.call(build_env('/limited')) } }.not_to output.to_stdout
+      end
     end
   end
 

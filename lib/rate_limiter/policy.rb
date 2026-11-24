@@ -15,9 +15,16 @@ module RateLimiter
 
     PRIORITIES = %i[high low].freeze
 
-    # The outcome of applying a policy to one request.
-    Outcome = Data.define(:policy, :key, :limit, :cost, :result) do
+    # The outcome of applying a policy to one request. algorithm names the
+    # limiter's class, e.g. "token_bucket", for logs and metrics.
+    Outcome = Data.define(:policy, :key, :limit, :cost, :algorithm, :result) do
       def allowed? = result.allowed?
+    end
+
+    # "token_bucket" for Algorithms::TokenBucket; "custom" for anonymous classes.
+    def self.algorithm_name(limiter)
+      name = limiter.class.name.to_s.split('::').last.to_s
+      name.empty? ? 'custom' : name.gsub(/([a-z\d])([A-Z])/, '\\1_\\2').downcase
     end
 
     attr_reader :name
@@ -54,7 +61,7 @@ module RateLimiter
       reserve = low_priority?(env) ? [@reserve, limiter.limit - cost].min : 0
       result = reserve.zero? ? limiter.acquire(key, cost:) : limiter.acquire(key, cost:, reserve:)
 
-      Outcome.new(policy: self, key:, limit: limiter.limit, cost:, result:)
+      Outcome.new(policy: self, key:, limit: limiter.limit, cost:, algorithm: Policy.algorithm_name(limiter), result:)
     end
 
     private

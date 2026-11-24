@@ -5,6 +5,12 @@ require_relative 'lib/rate_limiter'
 require_relative 'lib/rate_limiter/middleware'
 require_relative 'lib/rate_limiter/bypass'
 
+# One JSON object per line on stdout, where Docker and most platforms collect
+# logs. RATE_LIMIT_LOG_LEVEL=error keeps only Redis outages.
+logger = RateLimiter::JsonLogFormatter.logger($stdout, level: ENV.fetch('RATE_LIMIT_LOG_LEVEL', 'info'))
+# Plug a StatsD/Prometheus adapter in here (see RateLimiter::Metrics).
+metrics = RateLimiter::Metrics::Null.new
+
 # Settings come from the environment. A value that isn't a number becomes nil,
 # so RateLimiter.configure reports every bad setting together, at boot.
 RateLimiter.configure do |config|
@@ -19,11 +25,12 @@ RateLimiter.configure do |config|
     config.redis_failure_policy = ENV.fetch('RATE_LIMIT_REDIS_FAILURE', 'allow')
 
     # Without this, failing open is silent: the API looks healthy while it
-    # stops limiting. Every failure is reported in the server's log instead.
-    action = config.redis_failure_policy == :reject ? 'rejecting' : 'allowing'
-    config.on_redis_error = lambda do |error|
-      warn "[rate_limiter] Redis unavailable, #{action} the request: #{error.class}: #{error.message}"
-    end
+    # stops limiting. Every failure is counted; the first is logged at once,
+    # then one line per interval for as long as the outage lasts.
+    config.on_redis_error = RateLimiter::RedisErrorReporter.new(
+      logger:, metrics:, failure_policy: config.redis_failure_policy,
+      interval: Float(ENV.fetch('RATE_LIMIT_REDIS_LOG_INTERVAL', '60'), exception: false) || 60
+    )
   end
 end
 
@@ -87,6 +94,13 @@ policies = RateLimiter::PolicySet.new(
                                   api_keys: env_list.call('RATE_LIMIT_BYPASS_API_KEYS'), client_ip:)
 )
 
-use RateLimiter::Middleware, policies: policies
+# API clients get the rejection as JSON. The middleware adds retry-after and
+# the RateLimit-* headers to whatever this returns.
+json_rejection = lambda do |_env, result, policy|
+  body = JSON.generate(error: 'rate_limited', policy: policy.name, retry_after: result.retry_after.ceil)
+  [429, { 'content-type' => 'application/json' }, [body]]
+end
+
+use RateLimiter::Middleware, policies: policies, responder: json_rejection, logger: logger, metrics: metrics
 
 run Api

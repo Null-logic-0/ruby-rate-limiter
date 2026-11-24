@@ -8,19 +8,27 @@ RSpec.describe 'config.ru' do
 
   settings = %w[RATE_LIMIT_ALGORITHM RATE_LIMIT RATE_LIMIT_WINDOW TRUSTED_PROXIES REDIS_URL RATE_LIMIT_REDIS_FAILURE
                 RATE_LIMIT_API_KEYS RATE_LIMIT_PREMIUM_API_KEYS RATE_LIMIT_GLOBAL RATE_LIMIT_BYPASS_IPS
-                RATE_LIMIT_BYPASS_API_KEYS]
+                RATE_LIMIT_BYPASS_API_KEYS RATE_LIMIT_LOG_LEVEL RATE_LIMIT_REDIS_LOG_INTERVAL]
 
   # Start every example from the defaults, whatever the shell has set, and
-  # restore the environment and global configuration afterwards.
+  # restore the environment and global configuration afterwards. config.ru
+  # logs to $stdout, so each example gets its own buffer: the lines can be
+  # checked, and they stay out of the test output.
   around do |example|
     saved = ENV.to_h.slice(*settings)
+    original_stdout = $stdout
+    $stdout = StringIO.new
     settings.each { |name| ENV.delete(name) }
     example.run
   ensure
+    $stdout = original_stdout
     settings.each { |name| ENV.delete(name) }
     ENV.update(saved)
     RateLimiter.reset_configuration!
   end
+
+  # Every line config.ru logged in this example, parsed (each must be JSON).
+  def log_lines = $stdout.string.lines.map { |line| JSON.parse(line) }
 
   # Each call builds a separate server: its own limiter, its own Redis client.
   def build_app
@@ -194,6 +202,44 @@ RSpec.describe 'config.ru' do
     end
   end
 
+  describe 'operations' do
+    it 'answers rejections with a JSON body that names the policy' do
+      burst('/limited', 11)
+
+      expect(last_response.status).to eq(429)
+      expect(last_response.content_type).to eq('application/json')
+      expect(JSON.parse(last_response.body)).to eq('error' => 'rate_limited', 'policy' => 'limited', 'retry_after' => 1)
+      expect(last_response.headers).to include('retry-after' => '1', 'ratelimit-limit' => '10')
+    end
+
+    it 'logs each rejection as one JSON line, and nothing for admitted requests' do
+      burst('/limited', 11)
+
+      expect(log_lines.size).to eq(1)
+      expect(log_lines.first).to include('level' => 'warn', 'event' => 'rate_limited', 'policy' => 'limited',
+                                         'key' => 'ip:127.0.0.1', 'path' => '/limited', 'method' => 'GET',
+                                         'remaining' => 0, 'algorithm' => 'token_bucket')
+      expect(log_lines.first['retry_after']).to be_within(0.01).of(1.0) # 10 per 10 s: one back per second
+    end
+
+    it 'never logs a raw API key, only its digest' do
+      ENV['RATE_LIMIT_API_KEYS'] = 'sk_live_4f9a2c7e1b8d'
+
+      burst('/limited', 11, 'HTTP_X_API_KEY' => 'sk_live_4f9a2c7e1b8d')
+
+      expect($stdout.string).not_to include('sk_live_4f9a2c7e1b8d')
+      expect(log_lines.first['key']).to match(/\Akey:\h{16}\z/)
+    end
+
+    it 'logs nothing below RATE_LIMIT_LOG_LEVEL' do
+      ENV['RATE_LIMIT_LOG_LEVEL'] = 'error'
+
+      burst('/limited', 11)
+
+      expect(log_lines).to be_empty
+    end
+  end
+
   describe 'the default token bucket' do
     it 'admits a burst of 10 and rejects the 11th with 429' do
       expect(burst('/limited', 11)).to eq([200] * 10 + [429])
@@ -317,25 +363,30 @@ RSpec.describe 'config.ru' do
       ENV['RATE_LIMIT_ALGORITHM'] = 'sliding_window_counter'
     end
 
-    # Keep the warnings out of the test output. `output(...).to_stderr` below
-    # still sees them, because it swaps in its own $stderr while it runs.
-    around do |example|
-      original = $stderr
-      $stderr = StringIO.new
-      example.run
-    ensure
-      $stderr = original
+    it 'logs the outage as JSON at once, then stays quiet for the interval instead of flooding' do
+      burst('/limited', 12)
+
+      outages = log_lines.select { |line| line['event'] == 'redis_unavailable' }
+      expect(outages.size).to eq(1)
+      expect(outages.first).to include('level' => 'error', 'action' => 'allowing',
+                                       'error' => 'Redis::CannotConnectError', 'suppressed' => 0)
     end
 
-    it 'reports each failure in the server log' do
-      expect { get '/limited' }
-        .to output(/\[rate_limiter\] Redis unavailable, allowing the request: Redis::CannotConnectError/).to_stderr
+    it 'logs every failure when RATE_LIMIT_REDIS_LOG_INTERVAL is 0' do
+      ENV['RATE_LIMIT_REDIS_LOG_INTERVAL'] = '0'
+
+      burst('/limited', 3)
+
+      # two policies (/limited and the global cap) each reach Redis per request
+      expect(log_lines.count { |line| line['event'] == 'redis_unavailable' }).to eq(6)
     end
 
     it 'says it is rejecting when RATE_LIMIT_REDIS_FAILURE=reject' do
       ENV['RATE_LIMIT_REDIS_FAILURE'] = 'reject'
 
-      expect { get '/limited' }.to output(/Redis unavailable, rejecting the request/).to_stderr
+      get '/limited'
+
+      expect(log_lines.first).to include('event' => 'redis_unavailable', 'action' => 'rejecting')
     end
 
     it 'fails open by default' do

@@ -13,6 +13,9 @@ require_relative 'rate_limiter/tiers'
 require_relative 'rate_limiter/policy'
 require_relative 'rate_limiter/policy_set'
 require_relative 'rate_limiter/bypass'
+require_relative 'rate_limiter/metrics'
+require_relative 'rate_limiter/json_log_formatter'
+require_relative 'rate_limiter/redis_error_reporter'
 
 # Provides the main RateLimiter interface for configuring, building, and managing application-wide rate 
 # limiters and queue-based limiters.
