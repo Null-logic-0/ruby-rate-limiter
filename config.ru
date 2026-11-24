@@ -26,11 +26,25 @@ RateLimiter.configure do |config|
   end
 end
 
-trusted_proxies = ENV.fetch('TRUSTED_PROXIES', '').split(',').map(&:strip).reject(&:empty?)
+env_list = ->(name) { ENV.fetch(name, '').split(',').map(&:strip).reject(&:empty?) }
+
+# Who a request counts against: its API key if it sends one this server issued
+# (RATE_LIMIT_API_KEYS, comma-separated), otherwise its IP address. Unknown keys
+# fall through to the IP, so inventing keys never buys a fresh limit.
+ip = RateLimiter::Identifiers::Ip.new(
+  client_ip: RateLimiter::Middleware::ClientIp.new(trusted_proxies: env_list.call('TRUSTED_PROXIES'))
+)
+api_keys = env_list.call('RATE_LIMIT_API_KEYS').to_set.freeze
+identifier =
+  if api_keys.empty?
+    ip
+  else
+    RateLimiter::Identifiers::FirstOf.new(RateLimiter::Identifiers::ApiKey.new(verify: api_keys.method(:include?)), ip)
+  end
 
 use RateLimiter::Middleware,
     limiter: RateLimiter.limiter,
     paths: ['/limited'],
-    client_ip: RateLimiter::Middleware::ClientIp.new(trusted_proxies: trusted_proxies)
+    identifier: identifier
 
 run Api

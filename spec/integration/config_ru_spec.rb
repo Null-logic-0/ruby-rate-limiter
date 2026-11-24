@@ -6,7 +6,8 @@ require 'rate_limiter/middleware'
 RSpec.describe 'config.ru' do
   include Rack::Test::Methods
 
-  settings = %w[RATE_LIMIT_ALGORITHM RATE_LIMIT RATE_LIMIT_WINDOW TRUSTED_PROXIES REDIS_URL RATE_LIMIT_REDIS_FAILURE]
+  settings = %w[RATE_LIMIT_ALGORITHM RATE_LIMIT RATE_LIMIT_WINDOW TRUSTED_PROXIES REDIS_URL RATE_LIMIT_REDIS_FAILURE
+                RATE_LIMIT_API_KEYS]
 
   # Start every example from the defaults, whatever the shell has set, and
   # restore the environment and global configuration afterwards.
@@ -61,6 +62,38 @@ RSpec.describe 'config.ru' do
       get '/limited', {}, { 'HTTP_X_FORWARDED_FOR' => '198.51.100.1' }
 
       expect(client_key).to eq('ip:127.0.0.1')
+    end
+  end
+
+  describe 'identification by API key (RATE_LIMIT_API_KEYS)' do
+    let(:issued_key) { 'sk_live_4f9a2c7e1b8d' }
+
+    before { ENV['RATE_LIMIT_API_KEYS'] = "#{issued_key}, sk_live_second" }
+
+    def with_key(key, ip = '127.0.0.1') = { 'HTTP_X_API_KEY' => key, 'REMOTE_ADDR' => ip }
+
+    it 'gives an issued key its own limit, apart from its IP' do
+      expect(burst('/limited', 11, with_key(issued_key))).to eq([200] * 10 + [429])
+      expect(burst('/limited', 1)).to eq([200])
+    end
+
+    it 'shares one limit for an issued key across IPs' do
+      statuses = (1..11).map { |i| burst('/limited', 1, with_key(issued_key, "198.51.100.#{i}")).first }
+
+      expect(statuses).to eq([200] * 10 + [429])
+    end
+
+    it 'limits a request with an unknown key by its IP, so made-up keys buy nothing' do
+      burst('/limited', 10)
+
+      expect(burst('/limited', 1, with_key('made-up-key'))).to eq([429])
+      expect(client_key).to eq('ip:127.0.0.1')
+    end
+
+    it 'keys by a digest, never the raw key' do
+      get '/limited', {}, with_key(issued_key)
+
+      expect(client_key).to match(/\Akey:\h{16}\z/)
     end
   end
 

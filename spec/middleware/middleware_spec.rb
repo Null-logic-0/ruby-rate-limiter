@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'delegate'
 require 'rate_limiter/middleware'
 
 RSpec.describe RateLimiter::Middleware do
@@ -52,6 +53,18 @@ RSpec.describe RateLimiter::Middleware do
       expect { described_class.new(inner_app, limiter: queue, paths: ['/limited']) }
         .to raise_error(ArgumentError, /queue algorithms/)
     end
+
+    it 'refuses an identifier that cannot be called' do
+      expect { described_class.new(inner_app, limiter: limiter, paths: ['/limited'], identifier: 'ip') }
+        .to raise_error(ArgumentError, /identifier must respond to #call/)
+    end
+
+    it 'refuses identifier: and client_ip: together, since only one of them could be used' do
+      expect do
+        described_class.new(inner_app, limiter: limiter, paths: ['/limited'],
+                                        identifier: RateLimiter::Identifiers::Ip.new, client_ip: ->(_env) { '1.2.3.4' })
+      end.to raise_error(ArgumentError, /not both/)
+    end
   end
 
   describe 'client identification' do
@@ -83,6 +96,85 @@ RSpec.describe RateLimiter::Middleware do
       custom.call(env)
 
       expect(env[described_class::CLIENT_KEY]).to eq('ip:198.51.100.42')
+    end
+  end
+
+  # The same capacity-2 bucket, but identified by API key, user and IP.
+  describe 'pluggable identifiers' do
+    subject(:middleware) do
+      described_class.new(inner_app, limiter: limiter, paths: ['/limited'], identifier: identifier)
+    end
+
+    let(:identifier) do
+      RateLimiter::Identifiers::FirstOf.new(RateLimiter::Identifiers::User.new, RateLimiter::Identifiers::ApiKey.new,
+                                            RateLimiter::Identifiers::Ip.new)
+    end
+    let(:api_key) { 'sk_live_4f9a2c7e1b8d' }
+
+    def with_key(key, ip = '203.0.113.7') = { 'HTTP_X_API_KEY' => key, 'REMOTE_ADDR' => ip }
+    def as_user(id, ip = '203.0.113.7') = { 'rate_limiter.user_id' => id, 'REMOTE_ADDR' => ip }
+
+    it 'gives different API keys separate limits' do
+      2.times { request('/limited', with_key(api_key)) }
+
+      expect(status_of('/limited', with_key(api_key))).to eq(429)
+      expect(status_of('/limited', with_key('sk_live_other'))).to eq(200)
+    end
+
+    it 'shares one limit for the same API key, whatever IP it comes from' do
+      statuses = ['203.0.113.7', '198.51.100.9', '192.0.2.1'].map { |ip| status_of('/limited', with_key(api_key, ip)) }
+
+      expect(statuses).to eq([200, 200, 429])
+    end
+
+    it 'gives each user their own limit' do
+      2.times { request('/limited', as_user(1)) }
+
+      expect(status_of('/limited', as_user(1))).to eq(429)
+      expect(status_of('/limited', as_user(2))).to eq(200)
+    end
+
+    it 'ignores a user id forged in a request header and falls back to the IP' do
+      expect(client_key_for('/limited', 'HTTP_X_USER_ID' => 'admin')).to eq('ip:203.0.113.7')
+    end
+
+    it 'does not charge a logged-in user to the IP they share with others' do
+      2.times { request('/limited') } # someone else at the same IP used it up
+
+      expect(status_of('/limited')).to eq(429)
+      expect(status_of('/limited', as_user(1))).to eq(200)
+    end
+
+    it 'never hands the raw API key to the limiter, or puts it anywhere in the env' do
+      seen = []
+      recording = Class.new(SimpleDelegator) do
+        define_method(:acquire) do |key, **options|
+          seen << key
+          __getobj__.acquire(key, **options)
+        end
+      end.new(limiter)
+      app = described_class.new(inner_app, limiter: recording, paths: ['/limited'], identifier: identifier)
+      env = build_env('/limited', with_key(api_key))
+
+      app.call(env)
+
+      expect(seen).to eq([env[described_class::CLIENT_KEY]])
+      expect(seen.first).to match(/\Akey:\h{16}\z/)
+      expect(env.except('HTTP_X_API_KEY').values.map(&:inspect)).to all(satisfy { |value| !value.include?(api_key) })
+    end
+
+    describe 'when the identifier cannot identify the request' do
+      let(:identifier) { RateLimiter::Identifiers::ApiKey.new }
+
+      it 'counts it as "anonymous" rather than letting it through unlimited' do
+        expect(client_key_for('/limited')).to eq('anonymous')
+      end
+
+      it 'makes every unidentified request share that one limit' do
+        statuses = ['203.0.113.7', '198.51.100.9', '192.0.2.1'].map { |ip| status_of('/limited', 'REMOTE_ADDR' => ip) }
+
+        expect(statuses).to eq([200, 200, 429])
+      end
     end
   end
 

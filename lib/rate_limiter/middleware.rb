@@ -2,6 +2,7 @@
 
 require 'rack'
 require_relative 'middleware/client_ip'
+require_relative 'identifiers'
 
 module RateLimiter
   # Rack middleware that rate limits requests to chosen paths. It identifies
@@ -11,23 +12,31 @@ module RateLimiter
     CLIENT_KEY = 'rate_limiter.client_key'
     RESULT_KEY = 'rate_limiter.result'
 
+    # Requests the identifier can't attribute to anyone share this one key, so
+    # leaving out a header never means escaping the limit.
+    UNIDENTIFIED_KEY = 'anonymous'
+
     # Float arithmetic on timestamps can leave a result a hair above a whole
     # number (10.000000000000002). Rounding up must not turn that into 11.
     ROUNDING_TOLERANCE = 1e-9
 
-    def initialize(app, limiter:, paths:, client_ip: ClientIp.new)
+    # identifier - any #call(env) returning a namespaced key or nil
+    #              (see RateLimiter::Identifiers); defaults to the client's IP.
+    # client_ip  - kept for compatibility: shorthand for
+    #              identifier: Identifiers::Ip.new(client_ip: client_ip).
+    def initialize(app, limiter:, paths:, identifier: nil, client_ip: nil)
       ensure_immediate!(limiter)
 
       @app = app
       @limiter = limiter
       @paths = paths.map { |path| normalize(path) }.freeze
-      @client_ip = client_ip
+      @identifier = build_identifier(identifier, client_ip)
     end
 
     def call(env)
       return @app.call(env) unless limited?(env)
 
-      key = "ip:#{@client_ip.call(env)}"
+      key = identify(env)
       env[CLIENT_KEY] = key
 
       result = @limiter.acquire(key)
@@ -49,6 +58,20 @@ module RateLimiter
             "limiter must respond to #acquire and #limit (got #{limiter.class}): " \
             'queue algorithms delay work instead of answering allow-or-reject immediately, ' \
             'so build the limiter with RateLimiter.limiter'
+    end
+
+    def build_identifier(identifier, client_ip)
+      raise ArgumentError, 'pass identifier: or client_ip:, not both' if identifier && client_ip
+
+      identifier ||= Identifiers::Ip.new(client_ip: client_ip || ClientIp.new)
+      return identifier if identifier.respond_to?(:call)
+
+      raise ArgumentError, "identifier must respond to #call (got #{identifier.class})"
+    end
+
+    def identify(env)
+      key = @identifier.call(env)
+      key.nil? || key.empty? ? UNIDENTIFIED_KEY : key
     end
 
     def limited?(env)
