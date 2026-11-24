@@ -57,13 +57,27 @@ RSpec.describe RateLimiter::Configuration do
     it 'rejects an on_redis_error without #call' do
       fill_in.on_redis_error = Object.new
 
-      expect { config.validate! }.to raise_error(RateLimiter::ConfigurationError, /on_redis_error must respond to #call/)
+      expect { config.validate! }
+        .to raise_error(RateLimiter::ConfigurationError, /on_redis_error must respond to #call/)
     end
 
     it 'accepts any callable on_redis_error' do
       fill_in.on_redis_error = ->(_error) {}
 
       expect(config.validate!).to equal(config)
+    end
+
+    it "defaults the Redis namespace to 'rate_limiter'" do
+      expect(config.namespace).to eq('rate_limiter')
+    end
+
+    ['', nil, :login].each do |namespace|
+      it "rejects namespace #{namespace.inspect}" do
+        fill_in.namespace = namespace
+
+        expect { config.validate! }
+          .to raise_error(RateLimiter::ConfigurationError, /namespace must be a non-empty String/)
+      end
     end
 
     it 'reports every problem at once' do

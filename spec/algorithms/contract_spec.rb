@@ -54,6 +54,32 @@ RSpec.describe 'Immediate algorithm contract' do
         expect(results.map(&:allowed?)).to eq([true] * 10 + [false] * 2)
         expect(results.map(&:reset_after)).to all(be_a(Float).and(be >= 0))
       end
+
+      describe 'reserve:' do
+        it 'admits a request only while cost + reserve units are available' do
+          statuses = Array.new(8) { limiter.acquire(key, reserve: 3).allowed? }
+
+          expect(statuses).to eq([true] * 7 + [false])
+        end
+
+        it 'leaves the reserved units to requests without a reserve' do
+          7.times { limiter.acquire(key, reserve: 3) }
+
+          expect(Array.new(4) { limiter.acquire(key).allowed? }).to eq([true, true, true, false])
+        end
+
+        it 'spends only the cost, and reports a positive retry_after when it rejects' do
+          results = Array.new(8) { limiter.acquire(key, reserve: 3) }
+
+          expect(results[6].remaining).to eq(3)
+          expect(results[7]).to have_attributes(allowed?: false, remaining: 3)
+          expect(results[7].retry_after).to be > 0
+        end
+
+        it 'refuses a reserve that leaves no room for the cost' do
+          expect { limiter.acquire(key, cost: 2, reserve: 9) }.to raise_error(ArgumentError, /plus reserve 9 exceeds/)
+        end
+      end
     end
   end
 end

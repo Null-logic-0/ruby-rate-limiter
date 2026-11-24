@@ -27,11 +27,16 @@ module RateLimiter
         @mutex = Mutex.new
       end
 
-      def acquire(key, cost: 1)
+      # Admits the request if `cost` units are available and spends them.
+      # reserve: units this request may not use (they are kept for others),
+      # so it is admitted only while cost + reserve units are available. Only
+      # `cost` is spent. The check and the spend happen in one step.
+      def acquire(key, cost: 1, reserve: 0)
         Validators::CostValidator.validate!(
           cost: cost,
           maximum: @limit,
-          type: :integer
+          type: :integer,
+          reserve: reserve
         )
 
         @mutex.synchronize do
@@ -40,7 +45,7 @@ module RateLimiter
           used = @counts[key]
           reset_after = @window_start + @window - now
 
-          if used + cost <= @limit
+          if used + cost + reserve <= @limit
             @counts[key] = used + cost
             Result.new(allowed: true, remaining: @limit - used - cost, retry_after: 0.0, reset_after:)
           else

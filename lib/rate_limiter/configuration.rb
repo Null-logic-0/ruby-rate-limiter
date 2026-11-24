@@ -16,6 +16,10 @@ module RateLimiter
     # (or fail-closed) decision never happens silently. Any object with #call.
     attr_accessor :on_redis_error
 
+    # Prefix for this limiter's Redis keys. Give every policy its own, so two
+    # policies never share counters for the same consumer.
+    attr_accessor :namespace
+
     def initialize
       @algorithm = :token_bucket
       @limit = nil
@@ -24,6 +28,7 @@ module RateLimiter
       @redis = nil
       @redis_failure_policy = :allow
       @on_redis_error = nil
+      @namespace = 'rate_limiter'
     end
 
     # Accepts :fixed_window or "fixed_window" (handy for ENV values).
@@ -45,6 +50,7 @@ module RateLimiter
       problems << 'clock must respond to #now' unless clock.nil? || clock.respond_to?(:now)
       problems << 'redis must be a Redis client (respond to #evalsha)' unless redis.nil? || redis.respond_to?(:evalsha)
       problems << 'on_redis_error must respond to #call' unless on_redis_error.nil? || on_redis_error.respond_to?(:call)
+      problems << 'namespace must be a non-empty String' unless namespace.is_a?(String) && !namespace.empty?
       unless REDIS_FAILURE_POLICIES.include?(redis_failure_policy)
         problems << "redis_failure_policy must be :allow or :reject (got #{redis_failure_policy.inspect})"
       end

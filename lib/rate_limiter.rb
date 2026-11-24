@@ -7,6 +7,12 @@ require_relative 'rate_limiter/result'
 require_relative 'rate_limiter/admission'
 require_relative 'rate_limiter/registry'
 require_relative 'rate_limiter/configuration'
+require_relative 'rate_limiter/identifiers'
+require_relative 'rate_limiter/request'
+require_relative 'rate_limiter/tiers'
+require_relative 'rate_limiter/policy'
+require_relative 'rate_limiter/policy_set'
+require_relative 'rate_limiter/bypass'
 
 # Provides the main RateLimiter interface for configuring, building, and managing application-wide rate 
 # limiters and queue-based limiters.
@@ -34,8 +40,11 @@ module RateLimiter
 
     # Builds a new allow-or-reject limiter (responds to #acquire). Build it
     # once at boot and share it: every call returns a limiter with empty state.
-    def limiter(config = configuration)
-      build(config, kind: :immediate, alternative: 'RateLimiter.queue')
+    #
+    # overrides change settings for this limiter only, e.g. one per policy:
+    #   RateLimiter.limiter(limit: 5, window: 60, namespace: 'rate_limiter:login')
+    def limiter(config = configuration, **overrides)
+      build(with_overrides(config, overrides), kind: :immediate, alternative: 'RateLimiter.queue')
     end
 
     # Builds a new queue-based limiter (responds to #enqueue and #dequeue).
@@ -49,6 +58,20 @@ module RateLimiter
     end
 
     private
+
+    # A copy with some settings changed; the original (often the frozen
+    # global configuration) is left untouched.
+    def with_overrides(config, overrides)
+      return config if overrides.empty?
+
+      config.dup.tap do |copy|
+        overrides.each do |setting, value|
+          raise ArgumentError, "unknown setting #{setting.inspect}" unless copy.respond_to?(:"#{setting}=")
+
+          copy.public_send(:"#{setting}=", value)
+        end
+      end
+    end
 
     def build(config, kind:, alternative:)
       config.validate!

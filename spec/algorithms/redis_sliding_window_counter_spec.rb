@@ -26,6 +26,14 @@ RSpec.describe RateLimiter::Algorithms::RedisSlidingWindowCounter do
       expect(Array.new(11) { limiter.acquire(key).allowed? }).to eq([true] * 10 + [false])
     end
 
+    it 'keeps a reserve for requests without one, decided atomically in the script' do
+      low = Array.new(8) { limiter.acquire(key, reserve: 3).allowed? }
+      normal = Array.new(4) { limiter.acquire(key).allowed? }
+
+      expect(low).to eq([true] * 7 + [false])
+      expect(normal).to eq([true, true, true, false])
+    end
+
     it 'follows the Phase 8 worked example' do
       8.times { limiter.acquire(key) }
       clock.advance(75) # 15 s (25%) into the next window: estimate 3 + 8 × 0.75 = 9

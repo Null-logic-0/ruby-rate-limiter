@@ -30,6 +30,12 @@ module RateLimiter
         return if api_key.empty?
         return if @verify && !@verify.call(api_key)
 
+        key_for(api_key)
+      end
+
+      # The key a given API key is counted under. Lets an app map its issued
+      # keys to plans or tiers without keeping the raw keys around.
+      def key_for(api_key)
         "key:#{Digest::SHA256.hexdigest(api_key)[0, DIGEST_LENGTH]}"
       end
     end

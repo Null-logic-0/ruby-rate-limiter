@@ -34,23 +34,28 @@ module RateLimiter
         @mutex = Mutex.new
       end
 
-      def acquire(key, cost: 1)
+      # Admits the request if `cost` units are available and spends them.
+      # reserve: units this request may not use (they are kept for others),
+      # so it is admitted only while cost + reserve units are available. Only
+      # `cost` is spent. The check and the spend happen in one step.
+      def acquire(key, cost: 1, reserve: 0)
         Validators::CostValidator.validate!(
           cost: cost,
           maximum: @capacity,
           maximum_name: 'capacity',
-          type: :number
+          type: :number,
+          reserve: reserve
         )
 
         @mutex.synchronize do
           state = leak(key)
 
-          if state.level + cost <= @capacity + EPSILON
+          if state.level + cost + reserve <= @capacity + EPSILON
             state.level = [state.level + cost, @capacity].min.to_f
             Result.new(allowed: true, remaining: headroom(state), retry_after: 0.0,
                        reset_after: until_empty(state))
           else
-            retry_after = (state.level + cost - @capacity) / @leak_rate
+            retry_after = (state.level + cost + reserve - @capacity) / @leak_rate
             Result.new(allowed: false, remaining: headroom(state), retry_after: retry_after,
                        reset_after: until_empty(state))
           end

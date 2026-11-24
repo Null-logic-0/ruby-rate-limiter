@@ -56,6 +56,22 @@ RSpec.describe RateLimiter::Validators::CostValidator do
     end
   end
 
+  describe 'reserve' do
+    it 'accepts a reserve when cost plus reserve fits the maximum' do
+      expect { validate(3, reserve: 7) }.not_to raise_error
+    end
+
+    it 'rejects a reserve that leaves no room for the cost' do
+      expect { validate(3, reserve: 8) }.to raise_error(ArgumentError, 'cost 3 plus reserve 8 exceeds limit 10')
+    end
+
+    [-1, 1.5, '2', nil].each do |reserve|
+      it "rejects reserve #{reserve.inspect}" do
+        expect { validate(1, reserve: reserve) }.to raise_error(ArgumentError, /reserve must be a non-negative integer/)
+      end
+    end
+  end
+
   it 'rejects an unknown cost type' do
     expect { validate(1, type: :string) }.to raise_error(ArgumentError, 'Unknown cost type: string')
   end

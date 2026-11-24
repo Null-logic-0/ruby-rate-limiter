@@ -178,6 +178,82 @@ RSpec.describe RateLimiter::Middleware do
     end
   end
 
+  # Two policies: /public (3 per window) and a global cap (5) over /public and
+  # /upload; 10.0.0.1 is trusted.
+  describe 'with a PolicySet' do
+    subject(:middleware) { described_class.new(inner_app, policies: policies) }
+
+    let(:public_limiter) { RateLimiter::Algorithms::FixedWindowCounter.new(limit: 3, window: 60, clock: clock) }
+    let(:global_limiter) { RateLimiter::Algorithms::FixedWindowCounter.new(limit: 5, window: 60, clock: clock) }
+    let(:policies) do
+      RateLimiter::PolicySet.new(
+        [RateLimiter::Policy.new(name: 'public', methods: %w[GET], paths: %w[/public], limiter: public_limiter),
+         RateLimiter::Policy.new(name: 'global', paths: %w[/public /upload], limiter: global_limiter,
+                                 identifier: RateLimiter::Identifiers::Global.new)],
+        bypass: ->(env) { env['REMOTE_ADDR'] == '10.0.0.1' }
+      )
+    end
+
+    def post(path) = request(path, 'REQUEST_METHOD' => 'POST')
+
+    it 'reports the most restrictive policy in the headers and the env' do
+      env = build_env('/public')
+      _status, headers, _body = middleware.call(env)
+
+      expect(headers).to include('ratelimit-limit' => '3', 'ratelimit-remaining' => '2')
+      expect(env).to include(described_class::POLICY_KEY => 'public', described_class::CLIENT_KEY => 'ip:203.0.113.7')
+      expect(env[described_class::DECISION_KEY].outcomes.map { |outcome| outcome.policy.name }).to eq(%w[public global])
+    end
+
+    it 'reports the global cap once it is the tighter one' do
+      3.times { post('/upload') }
+
+      expect(headers_of('/public')).to include('ratelimit-limit' => '5', 'ratelimit-remaining' => '1')
+    end
+
+    it 'answers 429 with the headers of the policy that rejected' do
+      3.times { request('/public') }
+
+      status, headers, _body = request('/public')
+
+      expect(status).to eq(429)
+      expect(headers).to include('ratelimit-limit' => '3', 'ratelimit-remaining' => '0', 'retry-after' => '60')
+    end
+
+    it 'matches policies on the HTTP method' do
+      statuses = Array.new(5) { post('/public').first }
+
+      expect(statuses).to eq([200] * 5) # only the global cap (5) applies to POST
+    end
+
+    it 'matches policies on the normalized path' do
+      expect(headers_of('/%70ublic')).to include('ratelimit-limit' => '3')
+    end
+
+    it 'lets trusted clients through, without rate limit headers' do
+      env = build_env('/public', 'REMOTE_ADDR' => '10.0.0.1')
+      responses = Array.new(10) { middleware.call(env.dup) }
+
+      expect(responses.map(&:first)).to eq([200] * 10)
+      expect(responses.flat_map { |response| response[1].keys }.grep(/\Aratelimit-/)).to be_empty
+      expect(middleware.call(env)[1]).not_to have_key('retry-after')
+      expect(env[described_class::BYPASSED_KEY]).to be(true)
+    end
+
+    it 'leaves paths no policy covers alone' do
+      expect(client_key_for('/other')).to be_nil
+    end
+
+    it 'refuses policies: together with limiter:' do
+      expect { described_class.new(inner_app, policies: policies, limiter: limiter, paths: ['/x']) }
+        .to raise_error(ArgumentError, /not both/)
+    end
+
+    it 'refuses policies: that are not a PolicySet' do
+      expect { described_class.new(inner_app, policies: [policies]) }.to raise_error(ArgumentError, /PolicySet/)
+    end
+  end
+
   describe 'path normalization' do
     ['/%6Cimited', '/lim%69ted', '//limited', '/./limited', '/x/../limited',
      '/%2e%2e/limited', '/%2Flimited', '/%5Climited', '/limited/'].each do |path|

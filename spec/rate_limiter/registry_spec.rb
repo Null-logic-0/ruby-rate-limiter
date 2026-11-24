@@ -68,6 +68,20 @@ RSpec.describe RateLimiter::Registry do
     expect(errors.map(&:class)).to eq([Redis::CannotConnectError])
   end
 
+  it 'keys the Redis-backed algorithm under the configured namespace' do
+    client = Object.new.tap { |redis| %i[evalsha eval].each { |c| redis.define_singleton_method(c) { |*, **| nil } } }
+    config = RateLimiter::Configuration.new.tap do |settings|
+      settings.algorithm = :sliding_window_counter
+      settings.limit = 10
+      settings.window = 60
+      settings.redis = client
+      settings.namespace = 'rate_limiter:login'
+    end
+
+    expect(described_class.build(config.validate!).redis_key('ip:203.0.113.7'))
+      .to eq('rate_limiter:login:w60:ip:203.0.113.7')
+  end
+
   describe '.register' do
     after { described_class.unregister(:allow_all) }
 

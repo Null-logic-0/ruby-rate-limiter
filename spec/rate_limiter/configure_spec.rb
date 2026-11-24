@@ -68,6 +68,28 @@ RSpec.describe RateLimiter do
       expect(described_class.limiter(config)).to be_a(RateLimiter::Algorithms::SlidingWindowLog)
       expect { described_class.configuration }.to raise_error(RateLimiter::ConfigurationError)
     end
+
+    describe 'with overrides, e.g. one limiter per policy' do
+      it 'changes settings for that limiter only' do
+        configure
+
+        expect(described_class.limiter(limit: 5, window: 60))
+          .to be_a(RateLimiter::Algorithms::TokenBucket).and have_attributes(capacity: 5, refill_rate: 5.0 / 60)
+        expect(described_class.configuration).to have_attributes(limit: 10, window: 10, frozen?: true)
+      end
+
+      it 'validates the overridden settings' do
+        configure
+
+        expect { described_class.limiter(limit: 0) }.to raise_error(RateLimiter::ConfigurationError, /limit/)
+      end
+
+      it 'refuses a setting that does not exist' do
+        configure
+
+        expect { described_class.limiter(limt: 5) }.to raise_error(ArgumentError, /unknown setting :limt/)
+      end
+    end
   end
 
   describe '.queue' do

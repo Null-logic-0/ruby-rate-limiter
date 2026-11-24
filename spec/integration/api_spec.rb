@@ -9,7 +9,7 @@ RSpec.describe Api do
   def app
     described_class
   end
-  
+
   describe 'GET /unlimited' do
     it 'responds with the unlimited message as plain text' do
       get '/unlimited'
@@ -27,6 +27,30 @@ RSpec.describe Api do
       expect(last_response.status).to eq(200)
       expect(last_response.body).to eq("Limited, don't over use me!")
       expect(last_response.content_type).to eq('text/plain;charset=utf-8')
+    end
+  end
+
+  describe 'the endpoint table' do
+    { ['GET', '/public'] => 'Public data', ['POST', '/login'] => 'Logged in',
+      ['GET', '/premium'] => 'Premium content' }.each do |(verb, path), body|
+      it "answers #{verb} #{path}" do
+        custom_request verb, path
+
+        expect(last_response.status).to eq(200)
+        expect(last_response.body).to eq(body)
+      end
+    end
+
+    it 'answers POST /upload with the size it received' do
+      post '/upload', 'x' * 2048
+
+      expect(last_response.body).to eq('Uploaded 2048 bytes')
+    end
+
+    it 'routes only the listed methods' do
+      get '/login'
+
+      expect(last_response.status).to eq(404)
     end
   end
 

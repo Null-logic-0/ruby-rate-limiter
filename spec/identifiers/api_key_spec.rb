@@ -53,6 +53,10 @@ RSpec.describe RateLimiter::Identifiers::ApiKey do
     end
   end
 
+  it 'tells you the key an API key is counted under, e.g. to map issued keys to plans' do
+    expect(identifier.key_for(api_key)).to eq(identifier.call('HTTP_X_API_KEY' => api_key))
+  end
+
   it 'refuses a verify: that cannot be called' do
     expect { described_class.new(verify: 'yes') }.to raise_error(ArgumentError, /verify/)
   end

@@ -5,6 +5,7 @@
 -- ARGV[2]  window length in seconds
 -- ARGV[3]  cost of this request
 -- ARGV[4]  current time in seconds, or "" to use the Redis server's clock
+-- ARGV[5]  reserve: units this request must leave for others (0 if omitted)
 --
 -- Returns { allowed (1/0), estimate (string), current, previous, index, now (string) }
 
@@ -13,6 +14,7 @@ local limit = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
 local cost = tonumber(ARGV[3])
 local now = tonumber(ARGV[4])
+local reserve = tonumber(ARGV[5]) or 0
 
 if now == nil then
   local time = redis.call('TIME')
@@ -45,7 +47,7 @@ if progress < 0 then progress = 0 elseif progress > 1 then progress = 1 end
 
 local estimate = previous * (1 - progress) + current
 local allowed = 0
-if estimate + cost <= limit + 1e-9 then
+if estimate + cost + reserve <= limit + 1e-9 then
   allowed = 1
   current = current + cost
   estimate = estimate + cost

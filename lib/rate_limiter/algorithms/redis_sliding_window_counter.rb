@@ -47,15 +47,20 @@ module RateLimiter
         @clock = clock
       end
 
-      def acquire(key, cost: 1)
+      # Admits the request if `cost` units are available and spends them.
+      # reserve: units this request may not use (they are kept for others),
+      # so it is admitted only while cost + reserve units are available. Only
+      # `cost` is spent. The check and the spend happen in one step.
+      def acquire(key, cost: 1, reserve: 0)
         Validators::CostValidator.validate!(
           cost: cost,
           maximum: @limit,
-          type: :integer
+          type: :integer,
+          reserve: reserve
         )
 
-        reply = run_script(redis_key(key), [@limit, @window, cost, @clock ? @clock.now : ''])
-        to_result(reply, cost)
+        reply = run_script(redis_key(key), [@limit, @window, cost, @clock ? @clock.now : '', reserve])
+        to_result(reply, cost + reserve)
       rescue Redis::BaseConnectionError => e
         @on_error&.call(e)
         failure_result
@@ -81,7 +86,8 @@ module RateLimiter
         @redis.eval(SCRIPT, keys: [key], argv: argv)
       end
 
-      def to_result(reply, cost)
+      # needed: cost + reserve, the units that had to be available.
+      def to_result(reply, needed)
         allowed, estimate, current, previous, index, now = reply
         estimate = Float(estimate)
         now = Float(now)
@@ -91,7 +97,7 @@ module RateLimiter
         if allowed == 1
           Result.new(allowed: true, remaining: remaining(estimate), retry_after: 0.0, reset_after:)
         else
-          retry_after = retry_after(window_start, current, previous, now, cost)
+          retry_after = retry_after(window_start, current, previous, now, needed)
           Result.new(allowed: false, remaining: remaining(estimate), retry_after:, reset_after:)
         end
       end
